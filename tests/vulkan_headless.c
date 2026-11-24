@@ -8298,7 +8298,9 @@ static int check_vk12_way(void) {
                     warp32, meshes);
         CHECK(g_vk.has_cs_warp32 == warp32 && g_vk.has_mesh == meshes);
     }
-    /* a device with all of them but dynamic rendering, its store op NONE from the EXT */
+    /* what a 1.2 device must have is the demotion and the pipeline creation feedback: the renderer makes the rest itself
+       where the device lacks it (compat_sync.c, compat_render.c, compat_eds.c, compat_maint4.c), so a device with
+       all but dynamic rendering lacks nothing */
     VkExtensionProperties list[16] = {{0}};
     static const char* const have[] = {
         VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,          VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
@@ -8309,29 +8311,30 @@ static int check_vk12_way(void) {
     for (u32 i = 0; i < n; i++) snprintf(list[i].extensionName, sizeof list[i].extensionName, "%s", have[i]);
     SnxVkExtensions ext = {list, n};
     char names[256];
-    CHECK(vk_1_2_missing(&ext, names, sizeof names) == 1 && !strcmp(names, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME));
+    CHECK(vk_1_2_missing(&ext, names, sizeof names) == 0 && !names[0]);
     snprintf(list[n].extensionName, sizeof list[n].extensionName, "%s", VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
     ext.count = n + 1;
     CHECK(vk_1_2_missing(&ext, names, sizeof names) == 0 && !names[0]);
-    /* and without a store op NONE, two named */
-    ext.list = list + 1;
-    snprintf(list[n - 1].extensionName, sizeof list[n - 1].extensionName, "VK_EXT_not_this");
+    /* without the two it needs, both named, in the order of vk12_extensions */
+    ext.count = 0;
     CHECK(vk_1_2_missing(&ext, names, sizeof names) == 2 &&
-          !strcmp(names, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME ", " VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME));
+          !strcmp(names, VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME
+                         ", " VK_EXT_PIPELINE_CREATION_FEEDBACK_EXTENSION_NAME));
+    /* and the other extensions without a store op NONE: nothing named, as render.c does without it */
+    ext.list = list + 1;
+    ext.count = n;
+    snprintf(list[n - 1].extensionName, sizeof list[n - 1].extensionName, "VK_EXT_not_this");
+    CHECK(vk_1_2_missing(&ext, names, sizeof names) == 0 && !names[0]);
     /* on a 1.1 device the timeline semaphore and the driver's identity before them, as 1.2 has them in its core;
        the list cut to the room given */
     {
         char longer[512], cut[40];
-        CHECK(vk_1_1_missing(&ext, longer, sizeof longer) == 4 &&
-              !strcmp(longer, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME ", " VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME
-                                                                       ", " VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME
-                                                                       ", " VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME));
-        CHECK(vk_1_1_missing(&ext, cut, sizeof cut) == 4 && strlen(cut) == sizeof cut - 1);
+        CHECK(vk_1_1_missing(&ext, longer, sizeof longer) == 2 &&
+              !strcmp(longer, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME ", " VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME));
+        CHECK(vk_1_1_missing(&ext, cut, sizeof cut) == 2 && strlen(cut) == sizeof cut - 1);
         snprintf(list[n - 1].extensionName, sizeof list[n - 1].extensionName, "%s",
                  VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
-        CHECK(vk_1_1_missing(&ext, longer, sizeof longer) == 3 &&
-              !strcmp(longer, VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME ", " VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME
-                                                                      ", " VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME));
+        CHECK(vk_1_1_missing(&ext, longer, sizeof longer) == 1 && !strcmp(longer, VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME));
         snprintf(list[n - 1].extensionName, sizeof list[n - 1].extensionName, "VK_EXT_not_this");
     }
     /* all of them on a driver the bans keep from dynamic rendering: the filter create_device runs first takes it out,
@@ -8353,8 +8356,10 @@ static int check_vk12_way(void) {
                           0x6040001,
                           SNX_VK_BAN_ANDROID};
     vk_bans_device(&banned);
-    CHECK(vk_bans_filter(&ext, vk12_ban_say) == 1 && vk_1_2_missing(&ext, names, sizeof names) == 1 &&
-          !strcmp(names, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME));
+    /* the filter takes the extension out, and the device runs on render passes without it (compat_render.c) */
+    CHECK(vk_bans_filter(&ext, vk12_ban_say) == 1 &&
+          !snx_vk_extensions_has(&ext, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) &&
+          vk_1_2_missing(&ext, names, sizeof names) == 0 && !names[0]);
     VkPhysicalDeviceDriverProperties driver = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
     VkPhysicalDeviceProperties2 properties = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
                                               .pNext = &driver};
