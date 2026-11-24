@@ -1939,7 +1939,7 @@ static void pipe_info(const PipeKey* k, VkShaderModule fs, PipeInfo* o) {
                          .clamp_range = g_vk.has_depth_clamp_range,
                          .rate_palette = g_vk.vrs == VK_VRS_NV,
                          .blend = vk_pipe_blend_dynamic(k),
-                         .eds = g_vk.has_eds};
+                         .no_eds = !g_vk.has_eds};
     o->flags = (g_vk.has_descriptor_buffers ? VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT : 0) |
                (k->feedback ? VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT : 0) | vk_vrs_pipeline_flags() |
                vk_pipeline_stats_flags();

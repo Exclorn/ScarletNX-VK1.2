@@ -261,8 +261,8 @@ u32 vk_pipe_dynamic(u32 parts, const PipeDynIn* in, VkDynamicState* out) {
                  : when == DYN_CLAMP_RANGE  ? in->clamp_range
                  : when == DYN_RATE_PALETTE ? in->rate_palette
                  : when == DYN_BLEND        ? in->blend
-                 : when == DYN_EDS          ? in->eds
-                 : when == DYN_NO_EDS       ? !in->eds
+                 : when == DYN_EDS          ? !in->no_eds
+                 : when == DYN_NO_EDS       ? in->no_eds
                  : when == DYN_PR           ? (in->dyn_pr & bit) != 0
                                             : (in->dyn_pr & bit) && in->tess;
         if (in->mesh && g_dyn_states[i].part == VK_PART_VI) on = 0; /* a mesh pipeline has no vertex input state */

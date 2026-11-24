@@ -193,6 +193,19 @@ static void check_states(void) {
         }
         CHECK(ok && at == n, "a whole pipeline's states as before");
     }
+    /* without extended dynamic state: the viewports are the 1.0 states, and none of the extended states is listed */
+    {
+        PipeDynIn in = {.no_eds = 1};
+        u32 n = vk_pipe_dynamic(VK_PART_ALL, &in, s);
+        CHECK(has(s, n, VK_DYNAMIC_STATE_VIEWPORT) && has(s, n, VK_DYNAMIC_STATE_SCISSOR), "viewport and scissor");
+        CHECK(!has(s, n, VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT) && !has(s, n, VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT),
+              "no count of viewports");
+        for (u32 i = 2; i < 14; i++) CHECK(!has(s, n, g_before[i]), "an extended state is static");
+        CHECK(has(s, n, VK_DYNAMIC_STATE_LINE_WIDTH) && has(s, n, VK_DYNAMIC_STATE_BLEND_CONSTANTS) &&
+                  has(s, n, VK_DYNAMIC_STATE_STENCIL_REFERENCE),
+              "the states of Vulkan 1.0 stay dynamic");
+        CHECK(n == 9u, "the nine of Vulkan 1.0 that a pipeline lists");
+    }
     /* each pre-rasterization bit adds its states after those; patch control points only with tessellation */
     static const struct {
         u32 bit;

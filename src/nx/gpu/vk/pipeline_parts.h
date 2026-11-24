@@ -76,8 +76,8 @@ typedef struct {
     int blend;       /* the color blend enables, equations and write masks (vk_pipe_blend_dynamic) */
     int clamp_range; /* the depth clamp's range as dynamic state (has_depth_clamp_range) */
     int rate_palette; /* the viewports' shading rate palettes (g_vk.vrs VK_VRS_NV, shading_rate.c) */
-    int eds;          /* extended dynamic state (g_vk.has_eds): else the pipeline holds it, and the viewports are
-                         VK_DYNAMIC_STATE_VIEWPORT and SCISSOR, their count static (PipeKey.eds) */
+    int no_eds;       /* no extended dynamic state (g_vk.has_eds off): the pipeline holds it (PipeKey.eds), and the
+                         viewports are VK_DYNAMIC_STATE_VIEWPORT and SCISSOR, their count static */
 } PipeDynIn;
 /* k's color targets a draw writes nothing to (write mask 0) made VK_FORMAT_UNDEFINED with no blend state, as targets
    the pass has not: with VK_EXT_dynamic_rendering_unused_attachments a pipeline's format there may be UNDEFINED
