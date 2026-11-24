@@ -1938,10 +1938,35 @@ static void pipe_info(const PipeKey* k, VkShaderModule fs, PipeInfo* o) {
                          .mesh = k->mesh != 0,
                          .clamp_range = g_vk.has_depth_clamp_range,
                          .rate_palette = g_vk.vrs == VK_VRS_NV,
-                         .blend = vk_pipe_blend_dynamic(k)};
+                         .blend = vk_pipe_blend_dynamic(k),
+                         .eds = g_vk.has_eds};
     o->flags = (g_vk.has_descriptor_buffers ? VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT : 0) |
                (k->feedback ? VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT : 0) | vk_vrs_pipeline_flags() |
                vk_pipeline_stats_flags();
+    /* a device without extended dynamic state has its values in the pipeline (render.c's draw_eds), and a count of
+       viewports and scissors that the pipeline states: VIEWPORT and SCISSOR are the dynamic ones then (pipeline_parts.c) */
+    if (!g_vk.has_eds) {
+        const PipeEds* e = &k->eds;
+        o->ia.topology = k->mesh ? o->ia.topology : (VkPrimitiveTopology)e->topo;
+        o->ia.primitiveRestartEnable = e->restart != 0;
+        o->vp.viewportCount = o->vp.scissorCount = e->viewports;
+        o->rs.cullMode = (VkCullModeFlags)e->cull;
+        o->rs.frontFace = (VkFrontFace)e->front;
+        o->rs.rasterizerDiscardEnable = e->discard != 0;
+        o->rs.depthBiasEnable = e->bias_on != 0;
+        o->ds.depthTestEnable = e->depth_test != 0;
+        o->ds.depthWriteEnable = e->depth_write != 0;
+        o->ds.depthCompareOp = (VkCompareOp)e->depth_cmp;
+        o->ds.depthBoundsTestEnable = e->bounds_on != 0;
+        o->ds.stencilTestEnable = e->stencil_on != 0;
+        VkStencilOpState* faces[2] = {&o->ds.front, &o->ds.back};
+        for (u32 i = 0; i < 2; i++) {
+            faces[i]->failOp = (VkStencilOp)e->face[i][0];
+            faces[i]->passOp = (VkStencilOp)e->face[i][1];
+            faces[i]->depthFailOp = (VkStencilOp)e->face[i][2];
+            faces[i]->compareOp = (VkCompareOp)e->face[i][3];
+        }
+    }
     /* each draw pipeline reads the shading rate image, which shades each pixel where none is bound */
     vk_vrs_pipeline(&o->vrs, &o->vp, &o->fi);
 }
@@ -3578,6 +3603,7 @@ static void pf_key(char* out, size_t n, size_t* guest) {
                                                                 : 1u + g_spirv_translate.tex_array;
     u32 caps[] = {(u32)g_vk.has_divisor,
                   (u32)g_vk.has_dynamic_stride,
+                  (u32)g_vk.has_eds,
                   (u32)g_vk.has_shader_draw_parameters,
                   (u32)g_vk.has_feedback,
                   (u32)g_vk.has_feedback_dynamic,

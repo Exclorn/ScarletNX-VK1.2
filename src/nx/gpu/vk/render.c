@@ -352,14 +352,16 @@ static int render_begin(Surf** rt, Surf* zt, u32 n, int zt_ro, int srgb_write, u
         zt_ro ? VK_LAYOUT(DEPTH_STENCIL_READ_ONLY_OPTIMAL) : VK_LAYOUT(DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
     /* a read-only depth target keeps its contents: a store would write it at the end of the pass, which the read
        access vk_surf_use records doesn't cover, and the next barrier wouldn't wait for it */
-    if (zt_ro) za.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
+    /* a device without store op NONE stores it: the same bytes, and the access below records the write */
+    if (zt_ro && g_vk.has_store_none) za.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
     if (zt) {
         int undefined = zt->layout == VK_IMAGE_LAYOUT_UNDEFINED;
         if (zt_ro)
             vk_surf_use(cb, zt, zl,
                         VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
                             VK_SAMPLED_STAGES,
-                        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+                        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+                            (g_vk.has_store_none ? 0 : VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT));
         else
             vk_surf_use(cb, zt, zl,
                         VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
@@ -706,6 +708,25 @@ static void feedback_done(u32 read, u32 write) {
     g_rp.fb_written |= write & g_rp.fb;
 }
 
+/* the extended dynamic state a draw of our own has, in its key where the device has not the extension (g_vk.has_eds):
+   plain_state's values, with the stencil test on and REPLACE where the clear of stencil bits asks for it */
+static void plain_eds(PipeKey* k, int stencil_replace) {
+    if (g_vk.has_eds) return;
+    k->eds = (PipeEds){.on = 1,
+                       .cull = VK_CULL_MODE_NONE,
+                       .front = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+                       .topo = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+                       .depth_cmp = VK_COMPARE_OP_ALWAYS,
+                       .stencil_on = stencil_replace != 0,
+                       .viewports = 1};
+    for (u32 i = 0; i < 2; i++) {
+        k->eds.face[i][0] = VK_STENCIL_OP_KEEP;
+        k->eds.face[i][1] = stencil_replace ? VK_STENCIL_OP_REPLACE : VK_STENCIL_OP_KEEP;
+        k->eds.face[i][2] = VK_STENCIL_OP_KEEP;
+        k->eds.face[i][3] = VK_COMPARE_OP_ALWAYS;
+    }
+}
+
 /* every dynamic state at a neutral value, for draws of our own */
 static void pr_dynamic(VkCommandBuffer cb, const PipeKey* k, int minus_one, int fresh);
 static void plain_state(VkCommandBuffer cb, VkRect2D sc) {
@@ -779,6 +800,7 @@ static int clear_masked(u32 slot, u32 mask, const float* cc, VkRect2D rect, u32 
         k.color[i] =
             g_rp.rt[i] ? (g_rp.srgb_write ? g_rp.rt[i]->f.vk : vk_srgb_as(g_rp.rt[i]->f.vk, 0)) : VK_FORMAT_UNDEFINED;
     k.samples = vk_surf_samples(g_rp.rt[slot]); /* every sample of the pass's targets */
+    plain_eds(&k, 0);
     k.blend[slot].mask = ((mask & 1) ? VK_COLOR_COMPONENT_R_BIT : 0) | ((mask & 2) ? VK_COLOR_COMPONENT_G_BIT : 0) |
                          ((mask & 4) ? VK_COLOR_COMPONENT_B_BIT : 0) | ((mask & 8) ? VK_COLOR_COMPONENT_A_BIT : 0);
     if (g_rp.zt) {
@@ -819,6 +841,7 @@ static int clear_stencil_masked(u32 mask, u32 value, VkRect2D rect, u32 layer, u
             g_rp.rt[i] ? (g_rp.srgb_write ? g_rp.rt[i]->f.vk : vk_srgb_as(g_rp.rt[i]->f.vk, 0)) : VK_FORMAT_UNDEFINED;
     k.samples = vk_surf_samples(g_rp.zt);
     k.depth = k.stencil = g_rp.zt->f.vk;
+    plain_eds(&k, 1);
     VkPipeline pipeline = vk_pipeline_get(&k);
     if (!pipeline) return 0;
     VkCommandBuffer cb = vk_cmd();
@@ -7549,24 +7572,59 @@ retry:
     /* the feedback loop goes into the key last: stage_set found it. So do the topology class and polygon mode, which
        a draw made into lines or points changes (edge_indices) and the kept key may hold from the last draw */
     u32 feedback = fb && !g_vk.has_feedback_dynamic;
+    /* the extended dynamic state that the pipeline holds without the extension, as the draw's commands below would
+       set it (the device ignores those) */
+    PipeEds eds = {0};
+    if (!g_vk.has_eds) {
+        const u32 pk = edges ? (u32)VK_POLYGON_MODE_FILL : polygon_mode(&ds->rkey);
+        const int st = !late_depth && zt && zt->f.stencil && ds->dyn.stencil_test;
+        eds = (PipeEds){.on = 1,
+                        .cull = ds->dyn.cull,
+                        .front = vk_render_front_face(&ds->dyn),
+                        .topo = (u32)topo,
+                        .restart = restart && (indexed == 1 || indexed == 3),
+                        .discard = ds->dyn.discard != 0,
+                        .bias_on = !edges && (ds->dyn.bias_on >> (pk == VK_POLYGON_MODE_POINT  ? 0
+                                                                  : pk == VK_POLYGON_MODE_LINE ? 1
+                                                                                               : 2) &
+                                              1),
+                        .depth_test = !late_depth && zt && ds->dyn.depth_test,
+                        .depth_write = !late_depth && zt && ds->dyn.depth_write,
+                        .depth_cmp = ds->dyn.depth_cmp,
+                        .bounds_on = !late_depth && zt && g_vk.feat.depthBounds && (dc->state_flags & DS_DRAW_DEPTH_BOUNDS),
+                        .stencil_on = st,
+                        .viewports = last->si.writes_viewport ? GUEST_VIEWPORTS : 1};
+        for (u32 i = 0; i < 2; i++) {
+            eds.face[i][0] = ds->dyn.face[i].fail;
+            eds.face[i][1] = ds->dyn.face[i].pass;
+            eds.face[i][2] = ds->dyn.face[i].zfail;
+            eds.face[i][3] = ds->dyn.face[i].cmp;
+        }
+        if (mesh) eds.topo = eds.restart = 0; /* a mesh pipeline has no input assembly */
+    }
     u32 topo_class = edges ? (u32)topo : mesh ? 0 : topology_class(topology_vk(topology));
     u32 polygon = edges ? VK_POLYGON_MODE_FILL : polygon_mode(&ds->rkey);
     if (k == &made_k) {
         made_k.feedback = feedback;
         made_k.topo_class = topo_class;
         made_k.polygon = polygon;
-    } else if (k->feedback != feedback || k->topo_class != topo_class || k->polygon != polygon) {
+        made_k.eds = eds;
+    } else if (k->feedback != feedback || k->topo_class != topo_class || k->polygon != polygon ||
+               memcmp(&k->eds, &eds, sizeof eds)) {
         made_k = *k;
         made_k.feedback = feedback;
         made_k.topo_class = topo_class;
         made_k.polygon = polygon;
+        made_k.eds = eds;
         k = &made_k;
         kept = 0;
     }
     /* compared each draw, as above, where draw_state_check made the key again: a kept key of another feedback, topology
        class or polygon mode isn't a difference the check reports. The same state drawn directly and indirectly, or as
        polygons made into lines on the CPU and not, is one key of the table with two of these */
-    if (kept && (ke->k.feedback != feedback || ke->k.topo_class != topo_class || ke->k.polygon != polygon)) kept = 0;
+    if (kept && (ke->k.feedback != feedback || ke->k.topo_class != topo_class || ke->k.polygon != polygon ||
+                 memcmp(&ke->k.eds, &eds, sizeof eds)))
+        kept = 0;
     if (kept && check && memcmp(k, &ke->k, sizeof *k)) {
         draw_differs("pipeline key");
         kept = 0;

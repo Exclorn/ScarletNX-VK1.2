@@ -21,11 +21,18 @@ static int has_features(VkFormat f, VkFormatFeatureFlags2 need) {
     VkFormatProperties3 features = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};
     VkFormatProperties2 p = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, .pNext = &features};
     vkGetPhysicalDeviceFormatProperties2(g_vk.phys, f, &p);
+    VkFormatFeatureFlags2 have = features.optimalTilingFeatures;
+    if (!g_vk.has_ffeat2) {
+        /* no VkFormatProperties3 here: the 1.0 flags, whose low bits mean the same. Writes without a format are
+           the one flag they lack: the feature the caller tests gives them to every storage format */
+        have = p.formatProperties.optimalTilingFeatures;
+        if (have & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) have |= VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
+    }
     if (n < 64) {
         seen[n].f = f;
-        seen[n++].have = features.optimalTilingFeatures;
+        seen[n++].have = have;
     }
-    return (features.optimalTilingFeatures & need) == need;
+    return (have & need) == need;
 }
 
 int vk_format_minmax_filter(VkFormat f) {

@@ -17,7 +17,7 @@ construction.
 
 The newest build of `main` for Linux (AppImage), Windows and Android is in
 [scarletnx/nightly](https://github.com/scarletnx/nightly/releases/latest); [Install](docs/user/install.md) lists each
-download. Games need a Vulkan 1.3 driver, and keys and games must be dumped from your own console.
+download. Games need a Vulkan 1.3 driver, or a Vulkan 1.2 driver (the renderer makes what 1.3 took in where the driver lacks it, which is slower), and keys and games must be dumped from your own console.
 
 Started with no arguments, ScarletNX opens its [launcher](docs/user/gui.md): **Install Keys** installs your `prod.keys` for
 Switch and your `aes_keys.txt` for the encrypted 3DS games, to `~/.switch` and `~/.3ds` (`%USERPROFILE%` on Windows),

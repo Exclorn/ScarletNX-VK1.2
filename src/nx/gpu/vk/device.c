@@ -12,6 +12,10 @@
 #include "nx/gpu/gpu.h"
 #include "nx/gpu/gpu_queue.h"
 #include "nx/gpu/vk/vk.h"
+#include "nx/gpu/vk/compat_eds.h"
+#include "nx/gpu/vk/compat_maint4.h"
+#include "nx/gpu/vk/compat_render.h"
+#include "nx/gpu/vk/compat_sync.h"
 #include "nx/gpu/vk/shading_rate.h"
 #include "nx/runtime/main.h"
 #include "nx/gpu/vk/ledger.h"
@@ -380,6 +384,16 @@ static const char* const vk12_extensions[] = {VK_KHR_SYNCHRONIZATION_2_EXTENSION
                                               VK_EXT_SHADER_DEMOTE_TO_HELPER_INVOCATION_EXTENSION_NAME,
                                               VK_EXT_PIPELINE_CREATION_FEEDBACK_EXTENSION_NAME};
 #define VK12_EXTENSIONS (sizeof vk12_extensions / sizeof *vk12_extensions)
+/* an extension of vk12_extensions that a device may lack: the renderer makes its calls itself (compat_sync.c,
+   compat_render.c, compat_maint4.c) or bakes the state into the pipeline (compat_eds.c, PipeKey.eds) */
+static int vk12_compat(const char* name) {
+    return !strcmp(name, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) ||
+           !strcmp(name, VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME) ||
+           !strcmp(name, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) ||
+           !strcmp(name, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME) ||
+           !strcmp(name, VK_EXT_EXTENDED_DYNAMIC_STATE_2_EXTENSION_NAME) ||
+           !strcmp(name, VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
+}
 static const char* vk12_store_none(const SnxVkExtensions* e) {
     return snx_vk_extensions_has(e, VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME) ? VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME
            : snx_vk_extensions_has(e, VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME)
@@ -391,9 +405,10 @@ u32 vk_1_2_missing(const SnxVkExtensions* e, char* out, size_t size) {
     u32 n = 0;
     size_t at = 0;
     if (size) out[0] = 0;
-    for (u32 i = 0; i <= VK12_EXTENSIONS; i++) {
-        const char* name = i < VK12_EXTENSIONS ? vk12_extensions[i] : VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME;
-        if (i < VK12_EXTENSIONS ? snx_vk_extensions_has(e, name) : vk12_store_none(e) != NULL) continue;
+    /* the store op NONE is no longer among them: render.c does without it */
+    for (u32 i = 0; i < VK12_EXTENSIONS; i++) {
+        const char* name = vk12_extensions[i];
+        if (snx_vk_extensions_has(e, name) || vk12_compat(name)) continue;
         if (at < size) at += (size_t)snprintf(out + at, size - at, "%s%s", n ? ", " : "", name);
         n++;
     }
@@ -731,7 +746,10 @@ static u32 extension_needs(const SnxVkExtensions* e, int core13, VkExtensionNeed
                                       "Vulkan has a portability driver's subset on wherever the driver lists it"};
     if (!core13) {
         static const char why[] = "the device has Vulkan 1.2, where ScarletNX needs it for what Vulkan 1.3 took in";
-        for (u32 i = 0; i < VK12_EXTENSIONS; i++) need[needs++] = (VkExtensionNeed){vk12_extensions[i], why};
+        for (u32 i = 0; i < VK12_EXTENSIONS; i++) {
+            if (vk12_compat(vk12_extensions[i]) && !snx_vk_extensions_has(e, vk12_extensions[i])) continue;
+            need[needs++] = (VkExtensionNeed){vk12_extensions[i], why};
+        }
         /* the store op NONE: one of the two, the other where only one is listed */
         int khr = snx_vk_extensions_has(e, VK_KHR_LOAD_STORE_OP_NONE_EXTENSION_NAME),
             ext = snx_vk_extensions_has(e, VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME);
@@ -771,33 +789,49 @@ static void log_subgroups(u32 size, VkSubgroupFeatureFlags operations, VkShaderS
 
 /* the commands of Vulkan 1.3 the renderer calls, as a 1.2 device has them: by the names of its extensions, the same
    calls (the core names stay unloaded there). 0, with *lacks the first one the driver has not */
-static int vk12_commands(const char** lacks) {
+static int vk12_commands(const char** lacks, int sync2_ext, int render_ext, int eds_ext, int maint4_ext) {
 #define VK12_COMMAND(name, by)                                                                                         \
     name = name##by;                                                                                                   \
     if (!name && !*lacks) *lacks = #name #by
     *lacks = NULL;
-    VK12_COMMAND(vkCmdBeginRendering, KHR);
-    VK12_COMMAND(vkCmdEndRendering, KHR);
-    VK12_COMMAND(vkCmdPipelineBarrier2, KHR);
-    VK12_COMMAND(vkCmdWriteTimestamp2, KHR);
-    VK12_COMMAND(vkQueueSubmit2, KHR);
-    VK12_COMMAND(vkCmdBindVertexBuffers2, EXT);
-    VK12_COMMAND(vkCmdSetCullMode, EXT);
-    VK12_COMMAND(vkCmdSetFrontFace, EXT);
-    VK12_COMMAND(vkCmdSetPrimitiveTopology, EXT);
-    VK12_COMMAND(vkCmdSetViewportWithCount, EXT);
-    VK12_COMMAND(vkCmdSetScissorWithCount, EXT);
-    VK12_COMMAND(vkCmdSetDepthTestEnable, EXT);
-    VK12_COMMAND(vkCmdSetDepthWriteEnable, EXT);
-    VK12_COMMAND(vkCmdSetDepthCompareOp, EXT);
-    VK12_COMMAND(vkCmdSetDepthBoundsTestEnable, EXT);
-    VK12_COMMAND(vkCmdSetStencilTestEnable, EXT);
-    VK12_COMMAND(vkCmdSetStencilOp, EXT);
-    VK12_COMMAND(vkCmdSetDepthBiasEnable, EXT);
-    VK12_COMMAND(vkCmdSetPrimitiveRestartEnable, EXT);
-    VK12_COMMAND(vkCmdSetRasterizerDiscardEnable, EXT);
-    VK12_COMMAND(vkGetDeviceImageMemoryRequirements, KHR);
-    VK12_COMMAND(vkGetDeviceImageSparseMemoryRequirements, KHR);
+    if (render_ext) {
+        VK12_COMMAND(vkCmdBeginRendering, KHR);
+        VK12_COMMAND(vkCmdEndRendering, KHR);
+    } else {
+        vk_render_compat_install(g_vk.dev); /* before the renderer makes an image: compat_render.h */
+    }
+    if (sync2_ext) {
+        VK12_COMMAND(vkCmdPipelineBarrier2, KHR);
+        VK12_COMMAND(vkCmdWriteTimestamp2, KHR);
+        VK12_COMMAND(vkQueueSubmit2, KHR);
+    } else {
+        vk_sync2_compat_install();
+    }
+    if (eds_ext) {
+        VK12_COMMAND(vkCmdBindVertexBuffers2, EXT);
+        VK12_COMMAND(vkCmdSetCullMode, EXT);
+        VK12_COMMAND(vkCmdSetFrontFace, EXT);
+        VK12_COMMAND(vkCmdSetPrimitiveTopology, EXT);
+        VK12_COMMAND(vkCmdSetViewportWithCount, EXT);
+        VK12_COMMAND(vkCmdSetScissorWithCount, EXT);
+        VK12_COMMAND(vkCmdSetDepthTestEnable, EXT);
+        VK12_COMMAND(vkCmdSetDepthWriteEnable, EXT);
+        VK12_COMMAND(vkCmdSetDepthCompareOp, EXT);
+        VK12_COMMAND(vkCmdSetDepthBoundsTestEnable, EXT);
+        VK12_COMMAND(vkCmdSetStencilTestEnable, EXT);
+        VK12_COMMAND(vkCmdSetStencilOp, EXT);
+        VK12_COMMAND(vkCmdSetDepthBiasEnable, EXT);
+        VK12_COMMAND(vkCmdSetPrimitiveRestartEnable, EXT);
+        VK12_COMMAND(vkCmdSetRasterizerDiscardEnable, EXT);
+    } else {
+        vk_eds_compat_install();
+    }
+    if (maint4_ext) {
+        VK12_COMMAND(vkGetDeviceImageMemoryRequirements, KHR);
+        VK12_COMMAND(vkGetDeviceImageSparseMemoryRequirements, KHR);
+    } else {
+        vk_maint4_compat_install();
+    }
 #undef VK12_COMMAND
     return !*lacks;
 }
@@ -810,6 +844,10 @@ typedef struct {
     VkState vk;
     ShCaps translate;
     int core13, second, sparse_queue;
+    int sync2_ext; /* a 1.2 device that has VK_KHR_synchronization2: the other has compat_sync.c's calls */
+    int render_ext; /* the same for VK_KHR_dynamic_rendering: the other has render passes (compat_render.c) */
+    int maint4_ext; /* a 1.2 device that has VK_KHR_maintenance4: the other has compat_maint4.c's calls */
+    int eds_ext;    /* a 1.2 device that has VK_EXT_extended_dynamic_state and 2, with their features: the other bakes it */
     const char* store_none_ext;
     int has_drm; /* VK_EXT_physical_device_drm in the device's list, after its setting and the bans */
     int pstate;  /* gpu_pstate's value (SNX_GPU_PSTATE_*) */
@@ -834,6 +872,13 @@ static bool choose_device(SnxVkChoice* c, void* user) {
     g_vk.api = vk_api_for(g_vk.props.apiVersion);
     c->api = g_vk.api;
     const int core13 = g_vk.api >= VK_API_VERSION_1_3;
+    const int sync2_ext = !core13 && snx_vk_choice_has(c, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    const int render_ext = !core13 && snx_vk_choice_has(c, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+    const int maint4_ext_listed = !core13 && snx_vk_choice_has(c, VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
+    int maint4_ext = maint4_ext_listed;
+    /* both of the two, or the state is part of the pipeline (PipeKey.eds): a feature below can take it back */
+    int eds_ext = !core13 && snx_vk_choice_has(c, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME) &&
+                  snx_vk_choice_has(c, VK_EXT_EXTENDED_DYNAMIC_STATE_2_EXTENSION_NAME);
     /* SPIR-V 1.6 is Vulkan 1.3's: a 1.2 device takes 1.5, which declares demotion as its extension (the translator
        does either way) */
     spv_emit_set_version(core13 ? 0x00010600u : 0x00010500u);
@@ -1016,6 +1061,8 @@ static bool choose_device(SnxVkChoice* c, void* user) {
         /* the list after the extension settings (vk_ext_*) and the bans (common/gpu/vk/device.c) */
         const SnxVkExtensions* e = c->list;
         store_none_ext = vk12_store_none(e);
+        g_vk.has_store_none = core13 || store_none_ext != NULL;
+        g_vk.has_ffeat2 = core13 || snx_vk_extensions_has(e, VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME);
         /* again on this list, which the bans took out of: a 1.2 device banned from one of them is refused by its
            name, as one without it */
         char lacks12[400], why[480];
@@ -1030,9 +1077,12 @@ static bool choose_device(SnxVkChoice* c, void* user) {
         { /* every device here has maintenance4 (core in 1.3, required of 1.2 above) */
             VkPhysicalDeviceMaintenance4Properties m4 = {
                 .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES};
-            VkPhysicalDeviceProperties2 q = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &m4};
+            VkPhysicalDeviceMaintenance3Properties m3 = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES, .pNext = maint4_ext_listed ? &m4 : NULL};
+            VkPhysicalDeviceProperties2 q = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &m3};
             vkGetPhysicalDeviceProperties2(g_vk.phys, &q);
-            g_vk.max_buffer_size = m4.maxBufferSize;
+            /* no maintenance4: the allocation size is the biggest buffer, as a buffer is one allocation's range */
+            g_vk.max_buffer_size = core13 || maint4_ext_listed ? m4.maxBufferSize : m3.maxMemoryAllocationSize;
         }
         g_vk.has_divisor = snx_vk_choice_has(c, VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME);
         has_vertex_input = snx_vk_choice_has(c, VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME);
@@ -1359,13 +1409,13 @@ static bool choose_device(SnxVkChoice* c, void* user) {
                            core13 ? &q13 : NULL,
                            has_size_control ? &qsize : NULL,
                            has_mesh ? &qmesh : NULL,
-                           core13 ? NULL : &qsync2,
-                           core13 ? NULL : &qrendering,
-                           core13 ? NULL : &qmaintenance4,
+                           sync2_ext ? &qsync2 : NULL,
+                           render_ext ? &qrendering : NULL,
+                           maint4_ext ? &qmaintenance4 : NULL,
                            core13 ? NULL : &qdemote,
-                           core13 ? NULL : &qeds,
+                           eds_ext ? &qeds : NULL,
                            /* a 1.2 device's, and the patch control points of pipeline libraries' dynamic state */
-                           !core13 || has_eds2 ? &qeds2 : NULL,
+                           eds_ext || has_eds2 ? &qeds2 : NULL,
                            g_vk.has_divisor ? &fdiv : NULL,
                            g_vk.has_border_color ? &fbc : NULL,
                            g_vk.has_view_min_lod ? &fminlod : NULL,
@@ -1426,19 +1476,29 @@ static bool choose_device(SnxVkChoice* c, void* user) {
     /* without it the shaders do their FP16 work in 32 bits */
     if (vk_ban("shaderFloat16", q12.shaderFloat16, ban_say)) q12.shaderFloat16 = VK_FALSE;
     if (!core13) {
-        q13.synchronization2 = qsync2.synchronization2;
-        q13.dynamicRendering = qrendering.dynamicRendering;
-        q13.maintenance4 = qmaintenance4.maintenance4;
+        q13.synchronization2 = sync2_ext ? qsync2.synchronization2 : VK_TRUE; /* compat_sync.c where it is not there */
+        q13.dynamicRendering = render_ext ? qrendering.dynamicRendering : VK_TRUE; /* render passes where it is not */
+        if (maint4_ext && !qmaintenance4.maintenance4) {
+            WARN("vulkan: %s lists VK_KHR_maintenance4 without its feature: images' requirements are asked of an image\n",
+                 g_vk.props.deviceName);
+            maint4_ext = 0;
+        }
+        q13.maintenance4 = VK_TRUE; /* compat_maint4.c where the extension is not there */
         q13.shaderDemoteToHelperInvocation = qdemote.shaderDemoteToHelperInvocation;
         /* not needed to run: the mesh draws and the compute subgroups of 32 are left out without them */
         q13.subgroupSizeControl = qsize.subgroupSizeControl;
         q13.computeFullSubgroups = qsize.computeFullSubgroups;
+        if (eds_ext && !(qeds.extendedDynamicState && qeds2.extendedDynamicState2)) {
+            WARN("vulkan: %s lists the extended dynamic state extensions without their features: the state is baked\n",
+                 g_vk.props.deviceName);
+            eds_ext = 0;
+        }
         static const char* const names[] = {"synchronization2",     "dynamicRendering",
                                             "maintenance4",         "shaderDemoteToHelperInvocation",
                                             "extendedDynamicState", "extendedDynamicState2"};
         const VkBool32 have12[] = {q13.synchronization2,      q13.dynamicRendering,
                                    q13.maintenance4,          q13.shaderDemoteToHelperInvocation,
-                                   qeds.extendedDynamicState, qeds2.extendedDynamicState2};
+                                   !eds_ext || qeds.extendedDynamicState, !eds_ext || qeds2.extendedDynamicState2};
         char lacks[256] = "";
         size_t at = 0;
         for (u32 i = 0; i < sizeof names / sizeof *names; i++)
@@ -1456,6 +1516,12 @@ static bool choose_device(SnxVkChoice* c, void* user) {
             snprintf(why, sizeof why, "has Vulkan 1.2 without the features %s", lacks);
             return snx_vk_choice_refuse(c, why);
         }
+    }
+    g_vk.has_eds = core13 || eds_ext;
+    if (!g_vk.has_eds) {
+        g_vk.has_dynamic_stride = 0; /* the strides are in the pipelines (pipeline.c) */
+        LOG("vulkan: no extended dynamic state: cull mode, depth and stencil state, topology and the rest are part of "
+            "each pipeline (a pipeline for each of their values, as Eden does)\n");
     }
     g_vk.has_present_wait = has_present_id && has_present_wait && qpid.presentId && qpwait.presentWait;
     g_vk.has_present_timing = g_vk.has_present_wait && has_present_v2 && qpid2.presentId2 && qpwait2.presentWait2 &&
@@ -1654,6 +1720,11 @@ static bool choose_device(SnxVkChoice* c, void* user) {
         char line[400];
         vk_gpl_bans(&gd, ban_say);
         g_vk.has_gpl = vk_gpl_choose(&gd, &g_vk.dyn_pr, line, sizeof line);
+        if (!g_vk.has_eds && g_vk.has_gpl) { /* the parts' state is PipeKey.eds's, which only whole pipelines hold */
+            g_vk.has_gpl = 0;
+            g_vk.dyn_pr = 0;
+            snprintf(line, sizeof line, "vulkan: pipeline libraries off: the device has no extended dynamic state");
+        }
         LOG("%s\n", line);
         /* the blending as dynamic state: a draw's pipeline serves every blend of its programs and state, and the draw
            sets its own (render.c). Each of the three members a ban can turn off */
@@ -1990,15 +2061,20 @@ static bool choose_device(SnxVkChoice* c, void* user) {
                                                        .synchronization2 = VK_TRUE};
     VkPhysicalDeviceDynamicRenderingFeatures frendering = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
-        .pNext = &fsync2,
+        .pNext = sync2_ext ? (void*)&fsync2 : (void*)&f12,
         .dynamicRendering = VK_TRUE};
     VkPhysicalDeviceMaintenance4Features fmaintenance4 = {.sType =
                                                               VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES,
-                                                          .pNext = &frendering,
+                                                          .pNext = render_ext   ? (void*)&frendering
+                                                                   : sync2_ext ? (void*)&fsync2
+                                                                               : (void*)&f12,
                                                           .maintenance4 = VK_TRUE};
     VkPhysicalDeviceShaderDemoteToHelperInvocationFeatures fdemote = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES,
-        .pNext = &fmaintenance4,
+        .pNext = maint4_ext ? (void*)&fmaintenance4
+                 : render_ext ? (void*)&frendering
+                 : sync2_ext  ? (void*)&fsync2
+                              : (void*)&f12,
         .shaderDemoteToHelperInvocation = VK_TRUE};
     VkPhysicalDeviceExtendedDynamicStateFeaturesEXT feds = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
@@ -2015,7 +2091,7 @@ static bool choose_device(SnxVkChoice* c, void* user) {
         .subgroupSizeControl = f13.subgroupSizeControl,
         .computeFullSubgroups = f13.computeFullSubgroups};
     if (!core13) {
-        chain = &feds2;
+        chain = eds_ext ? (void*)&feds2 : (void*)&fdemote;
         for (u32 i = 0; i < VK12_EXTENSIONS; i++) snx_vk_choice_enable(c, vk12_extensions[i]);
         snx_vk_choice_enable(c, store_none_ext);
         if (fsize.subgroupSizeControl) {
@@ -2366,7 +2442,7 @@ static bool choose_device(SnxVkChoice* c, void* user) {
         chain = &fgpl;
         snx_vk_choice_enable(c, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME);
         snx_vk_choice_enable(c, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME);
-        if ((g_vk.dyn_pr & VK_DYN_PR_PATCH) && !core13) /* a 1.2 device has EDS2 in its chain (vk12_extensions) */
+        if ((g_vk.dyn_pr & VK_DYN_PR_PATCH) && eds_ext) /* a 1.2 device has EDS2 in its chain (vk12_extensions) */
             feds2.extendedDynamicState2PatchControlPoints = VK_TRUE;
         else if (g_vk.dyn_pr & VK_DYN_PR_PATCH) {
             feds2_patch.pNext = chain;
@@ -2508,6 +2584,10 @@ static bool choose_device(SnxVkChoice* c, void* user) {
     g_vk.feat2 = (VkPhysicalDeviceFeatures2){
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &g_vk.feat11, .features = g_vk.feat};
     d->core13 = core13;
+    d->sync2_ext = sync2_ext;
+    d->render_ext = render_ext;
+    d->eds_ext = eds_ext;
+    d->maint4_ext = maint4_ext;
     d->second = second;
     d->sparse_queue = sparse_queue;
     d->store_none_ext = store_none_ext;
@@ -2587,7 +2667,7 @@ static int create_device(void) {
     const char* store_none_ext = d.store_none_ext;
     vk_bans_features_say(ban_say); /* the known problems of features, which no ban turns off */
     const char* lacks_command = NULL;
-    if (!core13 && !vk12_commands(&lacks_command)) {
+    if (!core13 && !vk12_commands(&lacks_command, d.sync2_ext, d.render_ext, d.eds_ext, d.maint4_ext)) {
         WARN("vulkan: %s enabled the extensions 1.3 took in, but has no %s\n", g_vk.props.deviceName, lacks_command);
         snprintf(g_vk.start_failure, sizeof g_vk.start_failure,
                  "%s has Vulkan 1.2 and the extensions 1.3 took in, but its driver has no %s", g_vk.props.deviceName,

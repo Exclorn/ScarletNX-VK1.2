@@ -287,6 +287,10 @@ typedef struct {
     /* VK_EXT_shader_object (shader_objects.c): draws bind shaders, and the device's binaries are of this uuid and
        version, as a file of them keeps them between runs */
     int has_shader_objects;
+    /* a device without them (1.2, and no such extension): store op NONE (render.c stores a read-only depth target and
+       records the write), and VkFormatProperties3 (format.c reads the 1.0 feature flags) */
+    int has_store_none, has_ffeat2;
+    int has_eds; /* extended dynamic state: Vulkan 1.3's or its extensions'; else PipeKey.eds holds it (compat_eds.h) */
     u8 so_binary_uuid[VK_UUID_SIZE];
     u32 so_binary_version;
     u32 dyn_pr; /* VK_DYN_PR_*: the pre-rasterization state those pipelines take as dynamic state */
@@ -3038,6 +3042,15 @@ typedef struct {
         u32 stride;  /* only without has_dynamic_stride, else 0 */
     } bind[33];      /* bindings 0..nbind-1: a binding per attribute at most, and one for constant attributes */
 } VertexLayout;
+/* the state that extended dynamic state sets, in the pipeline where the device has not the extensions (g_vk.has_eds
+   off; compat_eds.h). All zero with them. u32 members only: the keys are hashed and compared whole */
+typedef struct {
+    u32 on;                                  /* 1 where the members are the pipeline's, 0 where they are dynamic state */
+    u32 cull, front, topo, restart, discard; /* VkCullModeFlags, VkFrontFace, VkPrimitiveTopology, 0 or 1, 0 or 1 */
+    u32 bias_on, depth_test, depth_write, depth_cmp, bounds_on, stencil_on;
+    u32 face[2][4];                          /* front and back: fail, pass, depth fail operation and compare op */
+    u32 viewports;                           /* the count of viewports and of scissors */
+} PipeEds;
 typedef struct {
     VkShaderModule vs, fs;
     VkShaderModule tcs, tes, gs; /* tessellation control and evaluation, geometry: VK_NULL_HANDLE when off */
@@ -3086,6 +3099,7 @@ typedef struct {
        alpha test's function, as its difference from always (SH_SPEC_ALPHA_ALWAYS ^ the function). Then a bit each for
        the lower-left window origin and the point sprite's flipped T */
     u32 fs_spec;
+    PipeEds eds; /* without g_vk.has_eds: what the pipeline holds of the extended dynamic state (render.c's draw_eds) */
 } PipeKey;
 /* a write mask of PipeKey.blend that marks the key's blending as dynamic state (vk_pipe_blend_key): every target's
    blend and write mask are set by the draw, which no static mask (4 bits) can be taken for */

@@ -66,7 +66,7 @@ float vk_conservative_dilation(u32 conservative, float most, char* line, size_t 
 #define VK_PART_FS  4u  /* fragment shader */
 #define VK_PART_FO  8u  /* fragment output interface */
 #define VK_PART_ALL 15u /* a whole pipeline */
-#define VK_PIPE_DYN_MAX 37  /* the most dynamic states a draw pipeline has */
+#define VK_PIPE_DYN_MAX 39  /* the most dynamic states a draw pipeline has (the table's length: VIEWPORT and SCISSOR are two of it) */
 /* what decides a draw pipeline's dynamic states: dyn_pr (VK_DYN_PR_*), the feedback loop's dynamic state, a binding
    stride (a vertex layout with bindings and has_dynamic_stride), dynamic vertex input and tessellation. A mesh
    pipeline has no input assembly or vertex input: its topology, primitive restart, strides and layout aren't states */
@@ -76,6 +76,8 @@ typedef struct {
     int blend;       /* the color blend enables, equations and write masks (vk_pipe_blend_dynamic) */
     int clamp_range; /* the depth clamp's range as dynamic state (has_depth_clamp_range) */
     int rate_palette; /* the viewports' shading rate palettes (g_vk.vrs VK_VRS_NV, shading_rate.c) */
+    int eds;          /* extended dynamic state (g_vk.has_eds): else the pipeline holds it, and the viewports are
+                         VK_DYNAMIC_STATE_VIEWPORT and SCISSOR, their count static (PipeKey.eds) */
 } PipeDynIn;
 /* k's color targets a draw writes nothing to (write mask 0) made VK_FORMAT_UNDEFINED with no blend state, as targets
    the pass has not: with VK_EXT_dynamic_rendering_unused_attachments a pipeline's format there may be UNDEFINED

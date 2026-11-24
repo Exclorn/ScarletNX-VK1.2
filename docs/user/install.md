@@ -20,7 +20,7 @@ builds. The latest:
 | Windows ARM64 | [ScarletNX-windows-aarch64.zip](https://github.com/scarletnx/nightly/releases/latest/download/ScarletNX-windows-aarch64.zip) | Run `bin\scarletnx.exe`, when its job built |
 | Android, arm64 and x86_64 | [ScarletNX-android-universal.apk](https://github.com/scarletnx/nightly/releases/latest/download/ScarletNX-android-universal.apk) | [Android](../hosts/android-app.md) |
 
-Games need a Vulkan 1.3 driver. MIPS64 and s390x have no download: they build from their presets ([MIPS64](../hosts/mips64.md),
+Games need a Vulkan 1.3 driver, or a Vulkan 1.2 one: the renderer makes the synchronization, the dynamic rendering, the extended dynamic state and the memory queries of 1.3 itself where a 1.2 driver lacks them, which costs speed. MIPS64 and s390x have no download: they build from their presets ([MIPS64](../hosts/mips64.md),
 [s390x](../hosts/s390x.md)). macOS and iOS build in CI. An iPhone prepares and runs a game by itself, and no game runs on macOS
 yet: see [macOS and iOS](../hosts/apple.md). To build ScarletNX yourself, see [Build](../dev/build.md), whose
 [Install / AppImage](../dev/build.md#install--appimage) installs a build.
