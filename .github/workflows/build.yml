@@ -24,8 +24,6 @@ on:
   workflow_dispatch:
   # main every three hours, so a nightly comes out while merges cancel main's pushes' runs; a run whose commit already
   # has its nightly cancels itself (nightly-due)
-  schedule:
-    - cron: '23 */3 * * *'
 
 # Jobs only read the repository, and a failed job has the rest of its run cancelled (scripts/fail-fast.py). A
 # push to main, a scheduled run or a run of main by hand that builds everywhere becomes a nightly, and a pull request's
