@@ -235,6 +235,31 @@ static void dump_regs32(const KThread* t) {
     dump_code(0, "code at lr", (u64)a->r[14] - 0x40, (u64)a->r[14] + 0x10, a->r[14]);
     dump_pointees(0, "r", r, 13, 4);
 }
+/* The first loads of a function through ADRP and LDR (a global through its GOT slot): each address and what it holds.
+   A null global that the function then dereferences is a game object that nothing made yet */
+static void dump_callee_loads(u64 fn) {
+    u64 val[31] = {0};
+    u32 known = 0;
+    int i;
+    for (i = 0; i < 12 && readable(fn + 4 * (u64)i, 4); i++) {
+        u32 w = gr32(fn + 4 * (u64)i);
+        u32 rd_ = w & 31, rn = (w >> 5) & 31;
+        if ((w & 0x9f000000u) == 0x90000000u && rd_ < 31) { /* ADRP */
+            u64 imm = ((u64)((w >> 5) & 0x7ffff) << 2) | ((w >> 29) & 3);
+            imm = (u64)((int64_t)(imm << 43) >> 43) << 12; /* 21 bits, signed */
+            val[rd_] = ((fn + 4 * (u64)i) & ~0xfffull) + imm;
+            known |= 1u << rd_;
+        } else if ((w & 0xffc00000u) == 0xf9400000u && rn < 31 && rd_ < 31 && ((known >> rn) & 1u)) { /* LDR Xt,[Xn,#imm] */
+            u64 a = val[rn] + (u64)((w >> 10) & 0xfff) * 8;
+            if (!readable(a, 8)) break;
+            val[rd_] = gr64(a);
+            known |= 1u << rd_;
+            WARN("  the callee loads [%llx] = %llx\n", (unsigned long long)a, (unsigned long long)val[rd_]);
+        } else if ((w & 0x7fe0ffe0u) == 0x2a0003e0u) { /* MOV Wd,Wm */
+            known &= ~(1u << rd_);
+        }
+    }
+}
 void kernel_dump_regs(CPU* c) {
     KThread* t = c ? (KThread*)c->thread : NULL;
     char ps[200], ls[200];
@@ -263,6 +288,7 @@ void kernel_dump_regs(CPU* c) {
             if ((bl >> 26) == 0x25) { /* BL imm26 */
                 u64 target = c->x[30] - 4 + (u64)((int64_t)((int32_t)(bl << 6) >> 6) * 4);
                 dump_code(0, "code of the callee at lr", target, target + 0x80, c->pc);
+                dump_callee_loads(target);
             }
         }
         dump_pointees(0, "x", c->x, 31, 4);
