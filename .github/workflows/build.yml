@@ -22,6 +22,11 @@ on:
       - 'docs/user/deprecations.md'
       - 'docs/user/gui.md'
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: 'Build only Windows x86_64: the other jobs are skipped, so none of them can cancel it'
+        type: boolean
+        default: false
   # main every three hours, so a nightly comes out while merges cancel main's pushes' runs; a run whose commit already
   # has its nightly cancels itself (nightly-due)
   schedule:
@@ -92,6 +97,7 @@ jobs:
   # (https://github.com/pkgforge-dev/Anylinux-AppImages), see scripts/make-appimage.sh
   appimage:
     name: Linux AppImage (${{ matrix.arch }})
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.windows_only) }}
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-26.04' }}
     # LLVM's build (scripts/linux-llvm.sh) adds about half an hour where its cache misses
     timeout-minutes: 120
@@ -583,6 +589,7 @@ jobs:
   # as they are, are x86-64's appimage job's, restored and not saved
   linux-sanitizers:
     name: Linux (x86_64, ASan + UBSan)
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.windows_only) }}
     runs-on: ubuntu-26.04
     timeout-minutes: 90
     container: archlinux:latest
@@ -732,7 +739,7 @@ jobs:
     name: A64 differential's QEMU reference
     needs: recompiler-changes
     # the cross builds' reference alone (appimage-cross), which a pull request does not run
-    if: ${{ github.event_name != 'pull_request' && !cancelled() }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && !(github.event_name == 'workflow_dispatch' && inputs.windows_only) }}
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     container: archlinux:latest
@@ -829,7 +836,7 @@ jobs:
     # big-endian ppc64, their one cross build, to make their runs shorter. Without a reference to run against, the
     # build and the launcher's tests alone
     if: >-
-      ${{ !cancelled() && github.event_name != 'pull_request' &&
+      ${{ !cancelled() && github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.windows_only) &&
       (needs.qemu-reference.result == 'success' || needs.qemu-reference.result == 'skipped') }}
     runs-on: ubuntu-26.04
     # LLVM's cross build (scripts/linux-llvm.sh) adds about half an hour where its cache misses
@@ -1262,7 +1269,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [x86_64, aarch64]
+        arch: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.windows_only && '["x86_64"]' || '["x86_64", "aarch64"]') }}
     defaults:
       run:
         shell: msys2 {0}
@@ -1513,6 +1520,7 @@ jobs:
   # Each ABI packs an APK of its own, then one APK holds both
   android:
     name: Android APK
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.windows_only) }}
     runs-on: ubuntu-26.04
     timeout-minutes: 240
     env:
@@ -1737,6 +1745,7 @@ jobs:
   # tars, their SHA-256 the ones GitHub lists for them
   apple:
     name: macOS and iOS (arm64)
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.windows_only) }}
     runs-on: macos-26
     timeout-minutes: 240
     continue-on-error: true
