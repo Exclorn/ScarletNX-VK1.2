@@ -46,7 +46,6 @@ u32 arm_block_at(const void* host_pc, u64* offset) {
 }
 void fs_save_report(void) {}
 void kernel_dump_regs(CPU* c) { (void)c; }
-void kernel_dump_threads(void) {}
 void kernel_dump_libc_fault(const CPU* c, u64 fault) {
     (void)c;
     (void)fault;

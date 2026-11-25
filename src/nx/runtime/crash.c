@@ -213,7 +213,6 @@ void crash_report(void* host_pc, void* fault, int sig) {
         WARN("  thread %llu (%s)\n", (unsigned long long)t->id, t->name);
         if (fault && in_guest) kernel_dump_libc_fault(&t->cpu, guest); /* a copy the runtime ran for the game */
         kernel_dump_regs(&t->cpu);
-        kernel_dump_threads(); /* what the game's other threads were doing: one may still be making what this one reads */
     } else {
         /* a driver's own thread has no note, and its name says whose it is */
         char name[64];
