@@ -291,6 +291,24 @@ void kernel_dump_regs(CPU* c) {
                 dump_callee_loads(target);
             }
         }
+        /* the loop that the faulting thread runs, its start and its strings: what it should have waited for */
+        dump_code(0, "code before the fault", c->pc - 0x1c0, c->pc - 0x20, 0);
+        for (i = 20; i < 29; i++) {
+            char txt[41];
+            size_t l = 0;
+            if (!readable(c->x[i], 48)) continue;
+            while (l < 40 && (gr32(c->x[i] + l) & 0xffu) >= 32 && (gr32(c->x[i] + l) & 0xffu) < 127) {
+                txt[l] = (char)(gr32(c->x[i] + l) & 0xffu);
+                l++;
+            }
+            txt[l] = 0;
+            if (l >= 4) WARN("  x%d points at the text \"%s\"\n", i, txt);
+        }
+        if (t) {
+            WARN("  thread entry %llx, argument %llx\n", (unsigned long long)t->entry, (unsigned long long)t->arg);
+            dump_code(0, "code at the thread entry", t->entry, t->entry + 0x40, 0);
+            dump_code(0, "the thread's argument", t->arg, t->arg + 0x80, 0);
+        }
         dump_pointees(0, "x", c->x, 31, 4);
     }
     dump_rings(0);
