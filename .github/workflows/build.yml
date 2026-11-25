@@ -1478,15 +1478,12 @@ jobs:
         continue-on-error: true
         run: |
           # offsets of "01005A20190A6000.exe+1288ca0" in a crash report, as the runtime's own exe has them
-          for exe in build/default/scarletnx.exe; do
-            llvm-nm "$exe" | wc -l
-            base=$(llvm-objdump -p "$exe" | awk '/ImageBase/ { print $2; exit }')
-            echo "== $exe (image base $base)"
-            for rva in 1627067 10a77ef 1288ca0 16dd67f 1289acd 16d50a5 118834a 1149be1 f3ba35 e8401a; do
-              addr=$(printf '0x%x' $(( base + 0x$rva - 1 )))
-              echo "-- +$rva"
-              llvm-addr2line -f -C -i -e "$exe" "$addr" | head -6
-            done
+          exe=build/default/scarletnx.exe
+          base=$(llvm-objdump -p "$exe" | awk '/ImageBase/ { print $2; exit }')
+          llvm-nm -n -C --defined-only "$exe" > nm.txt
+          for rva in 1627067 10a77ef 1288ca0 16dd67f 1289acd 16d50a5 118834a 1149be1 f3ba35 e8401a; do
+            addr=$(( 0x$base + 0x$rva - 1 ))
+            awk -v t="$addr" '{ a = strtonum("0x" $1); if (a > t) exit; last = $0 } END { print "+'"$rva"' " last }' nm.txt
           done
       - name: Check the artifact without the toolchain on PATH
         shell: pwsh
