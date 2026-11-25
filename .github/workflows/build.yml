@@ -1473,6 +1473,20 @@ jobs:
           mkdir -p stage/share/licenses/msys2
           cp -R "$MINGW_PREFIX/share/licenses/." stage/share/licenses/msys2/
           pacman -Q > stage/share/licenses/msys2/build-packages.txt
+      - name: Name the host offsets of a crash report (SNX_CRASH_RVAS)
+        if: matrix.arch == 'x86_64'
+        continue-on-error: true
+        run: |
+          # offsets of "01005A20190A6000.exe+1288ca0" in a crash report, as the runtime's own exe has them
+          for exe in stage/bin/*.exe; do
+            base=$(llvm-objdump -p "$exe" | awk '/ImageBase/ { print $2; exit }')
+            echo "== $exe (image base $base)"
+            for rva in 1627067 10a77ef 1288ca0 16dd67f 1289acd 16d50a5 118834a 1149be1 f3ba35 e8401a; do
+              addr=$(printf '0x%x' $(( base + 0x$rva - 1 )))
+              echo "-- +$rva"
+              llvm-addr2line -f -C -i -e "$exe" "$addr" | head -6
+            done
+          done
       - name: Check the artifact without the toolchain on PATH
         shell: pwsh
         run: |
