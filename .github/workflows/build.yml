@@ -1478,7 +1478,8 @@ jobs:
         continue-on-error: true
         run: |
           # offsets of "01005A20190A6000.exe+1288ca0" in a crash report, as the runtime's own exe has them
-          for exe in stage/bin/*.exe; do
+          for exe in build/default/scarletnx.exe; do
+            llvm-nm "$exe" | wc -l
             base=$(llvm-objdump -p "$exe" | awk '/ImageBase/ { print $2; exit }')
             echo "== $exe (image base $base)"
             for rva in 1627067 10a77ef 1288ca0 16dd67f 1289acd 16d50a5 118834a 1149be1 f3ba35 e8401a; do
