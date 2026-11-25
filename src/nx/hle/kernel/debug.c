@@ -257,6 +257,14 @@ void kernel_dump_regs(CPU* c) {
         dump_code(0, "code", c->pc - 0x20, c->pc + 0x20, c->pc);
         if (!readable(c->pc, 4)) /* a branch to where nothing is mapped: the caller's code says through what */
             dump_code(0, "code at lr", c->x[30] - 0x20, c->x[30] + 0x20, c->x[30]);
+        /* the faulting code is often the callee of the BL just before lr: its start says what it reads */
+        if (readable(c->x[30] - 4, 4)) {
+            u32 bl = gr32(c->x[30] - 4);
+            if ((bl >> 26) == 0x25) { /* BL imm26 */
+                u64 target = c->x[30] - 4 + (u64)((int64_t)((int32_t)(bl << 6) >> 6) * 4);
+                dump_code(0, "code of the callee at lr", target, target + 0x80, c->pc);
+            }
+        }
         dump_pointees(0, "x", c->x, 31, 4);
     }
     dump_rings(0);
