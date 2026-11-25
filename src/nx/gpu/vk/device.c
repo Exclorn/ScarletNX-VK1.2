@@ -2093,7 +2093,7 @@ static bool choose_device(SnxVkChoice* c, void* user) {
     if (!core13) {
         chain = eds_ext ? (void*)&feds2 : (void*)&fdemote;
         for (u32 i = 0; i < VK12_EXTENSIONS; i++) snx_vk_choice_enable(c, vk12_extensions[i]);
-        snx_vk_choice_enable(c, store_none_ext);
+        if (store_none_ext) snx_vk_choice_enable(c, store_none_ext); /* NULL: the driver has neither extension */
         if (fsize.subgroupSizeControl) {
             chain = &fsize;
             snx_vk_choice_enable(c, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME);
@@ -2751,7 +2751,7 @@ static int create_device(void) {
         for (u32 i = 0; i < VK12_EXTENSIONS && at < sizeof names; i++)
             at += (size_t)snprintf(names + at, sizeof names - at, "%s, ", vk12_extensions[i]);
         LOG("vulkan: the Vulkan 1.2 way: what 1.3 has from %s%s, shaders in SPIR-V 1.5, no Vulkan Video decode\n",
-            names, store_none_ext);
+            names, store_none_ext ? store_none_ext : "no store op NONE (render.c does without it)");
     }
     LOG("vulkan: %s, Vulkan %u.%u.%u, driver %08x, graphics queue family %u, compute %u%s\n", g_vk.props.deviceName,
         VK_API_VERSION_MAJOR(g_vk.props.apiVersion), VK_API_VERSION_MINOR(g_vk.props.apiVersion),
