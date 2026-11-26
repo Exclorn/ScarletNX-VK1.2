@@ -1103,6 +1103,15 @@ static void sampler_access(Glslc* g, uint32_t n, uint32_t m, Access* a) {
     if (x->kind == GLSLC_N_INDEX) a->idx[a->nidx++] = rvalue(g, x->b);
 }
 
+/* n names a uniform array of samplers that split_samplers made a variable for each element of */
+static int split_sampler_array(const Glslc* g, uint32_t n) {
+    const GlslcNode* x = nd(g, n);
+    if (x->kind != GLSLC_N_VAR || !g->bind || !g->split_samplers) return 0;
+    const GlslcSymbol* y = &g->syms[x->a];
+    return y->storage == GLSLC_ST_UNIFORM && ty(g, y->type)->kind == GLSLC_T_ARRAY &&
+           ty(g, ty(g, y->type)->elem)->kind == GLSLC_T_SAMPLER;
+}
+
 /* the memory n names, or 0 when n is a value */
 static int access(Glslc* g, uint32_t n, Access* a) {
     const GlslcNode* x = nd(g, n);
@@ -1141,6 +1150,11 @@ static int access(Glslc* g, uint32_t n, Access* a) {
                 return 1;
             }
             if (!g->e.sym_ids[s]) return 0;
+            if (split_sampler_array(g, n))
+                glslc_fail(g, g->e.site,
+                           "the array %.*s of samplers is a variable for each element here: read one element with an "
+                           "index that is a constant",
+                           (int)y->name.len, glslc_view_text(g, y->name));
             if (y->storage == GLSLC_ST_UNIFORM) { /* an instance-named block */
                 const GlslcBlockRead* r = block_read(g, s);
                 if (r && r->mode == SNX_GLSLC_BLOCK_WINDOW) {
@@ -1157,6 +1171,24 @@ static int access(Glslc* g, uint32_t n, Access* a) {
             return 1;
         }
         case GLSLC_N_INDEX:
+            if (split_sampler_array(g, x->a)) {
+                const GlslcSymbol* y = &g->syms[nd(g, x->a)->a];
+                const GlslcNode* k = nd(g, x->b);
+                if (k->kind != GLSLC_N_CONST)
+                    glslc_fail(g, g->e.site,
+                               "the array %.*s of samplers is indexed by a value known only when the shader runs: "
+                               "this backend gives each element a variable, so the index must be a constant",
+                               (int)y->name.len, glslc_view_text(g, y->name));
+                uint32_t at = k->a | ((uint32_t)k->b << 16);
+                if (at >= ty(g, y->type)->len)
+                    glslc_fail(g, g->e.site, "the index %u is past the %u elements of %.*s", at,
+                               (unsigned)ty(g, y->type)->len, (int)y->name.len, glslc_view_text(g, y->name));
+                memset(a, 0, sizeof *a);
+                a->base = g->e.sym_ids[nd(g, x->a)->a] + at;
+                a->storage = SC_UNIFORM_CONSTANT;
+                a->type = x->type;
+                return 1;
+            }
             if (!access(g, x->a, a) || a->nswizzle) return 0;
             if (a->wvar) {
                 window_index(g, a, x->b);
@@ -2661,6 +2693,26 @@ static void window_push_block(Glslc* g) {
     g->e.window_word0 = lo;
 }
 
+/* an array of samplers as a variable for each element, in a run of ids and of bindings from binding */
+static void split_sampler_variables(Glslc* g, uint32_t s, uint32_t set, uint32_t binding) {
+    const GlslcSymbol* y = &g->syms[s];
+    uint32_t len = ty(g, y->type)->len;
+    uint32_t pt = ptr_type(g, SC_UNIFORM_CONSTANT, val_type(g, ty(g, y->type)->elem));
+    uint32_t first = g->e.next_id;
+    g->e.next_id += len;
+    g->e.sym_ids[s] = first;
+    for (uint32_t k = 0; k < len; k++) {
+        uint32_t v = first + k;
+        EMIT(g, &g->e.globals, OP_VARIABLE, pt, v, SC_UNIFORM_CONSTANT);
+        char text[256]; /* a debug name, cut at 255 bytes */
+        int n = snprintf(text, sizeof text, "%.*s[%u]", (int)y->name.len, glslc_view_text(g, y->name), k);
+        inst_string(g, &g->e.names, OP_NAME, &v, 1, text, n < (int)sizeof text ? (uint32_t)n : sizeof text - 1, NULL,
+                    0);
+        EMIT(g, &g->e.annotations, OP_DECORATE, v, DEC_DESCRIPTOR_SET, set);
+        EMIT(g, &g->e.annotations, OP_DECORATE, v, DEC_BINDING, binding + k);
+    }
+}
+
 static void resource_variable(Glslc* g, uint32_t s) {
     GlslcSymbol* y = &g->syms[s];
     uint32_t e = element_of(g, y->type), set, binding;
@@ -2681,6 +2733,13 @@ static void resource_variable(Glslc* g, uint32_t s) {
         r.binding = y->binding;
         r.size = size;
         mapped_binding(g, &r, &set, &binding);
+        if (kind == SNX_GLSLC_REFLECT_SAMPLER && g->split_samplers && r.array) /* the run after the first */
+            for (uint32_t k = 1; k < r.array; k++) {
+                if (binding + k > 0xffffu || binding_taken(g, set, binding + k))
+                    glslc_fail(g, r.name.pos, "the %u samplers of %.*s need the bindings from %u: %u is not free",
+                               (unsigned)r.array, (int)r.name.len, glslc_view_text(g, r.name), binding, binding + k);
+                take_binding(g, set, binding + k, r.name);
+            }
     } else {
         set = y->set >= 0 ? (uint32_t)y->set : 0;
         binding = y->binding >= 0 ? (uint32_t)y->binding : free_binding(g, y->name);
@@ -2689,6 +2748,11 @@ static void resource_variable(Glslc* g, uint32_t s) {
         ask_block(g, s, set, binding, size, ty(g, y->type)->kind == GLSLC_T_ARRAY ? ty(g, y->type)->len : 0, et->name);
     GlslcBlockRead* read = (GlslcBlockRead*)block_read(g, s);
     if (read && read->mode == SNX_GLSLC_BLOCK_WINDOW) read->var = window_variable(g, set, binding);
+    if (kind == SNX_GLSLC_REFLECT_SAMPLER && g->bind && g->split_samplers && ty(g, y->type)->kind == GLSLC_T_ARRAY) {
+        split_sampler_variables(g, s, set, binding);
+        reflect(g, kind, y->name, y->type, binding, set, size);
+        return;
+    }
     uint32_t pointee, v;
     if (et->kind == GLSLC_T_IMAGE) {
         pointee = image_type(g, e, y->packing);

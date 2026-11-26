@@ -225,6 +225,7 @@ int snx_glslc_compile(GlslcWorkspace* workspace, const GlslcOptions* options, co
     g->bind = options->bind;
     g->bind_user = options->bind_user;
     g->map_default = options->map_default;
+    g->split_samplers = options->split_samplers != 0;
     g->flip_y = options->flip_y;
     g->block = options->block;
     g->desktop = options->desktop != 0;

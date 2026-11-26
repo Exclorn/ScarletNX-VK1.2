@@ -284,6 +284,9 @@ enum {
     MAX_COMBINED_TEXTURE_UNITS = 160,
     MAX_DRAW_BUFFERS = 8,
     MAX_UNIFORM_BLOCK_SIZE = 65536,
+    UNIFORM_BUFFER_OFFSET_ALIGNMENT = 256, /* a GeForce's and the console's: what the games' own driver answers */
+    MAX_UNIFORM_VECTORS = 1024,            /* a vertex or a fragment shader's loose uniforms, in vec4s */
+    MAX_VARYING_VECTORS = 31,
 };
 
 int snx_gl_get(uint32_t ctx, uint32_t pname, double v[4]) {
@@ -357,6 +360,19 @@ int snx_gl_get(uint32_t ctx, uint32_t pname, double v[4]) {
         case 0x8824:                                              /* GL_MAX_DRAW_BUFFERS */
         case 0x8cdf: /* GL_MAX_COLOR_ATTACHMENTS */ v[0] = MAX_DRAW_BUFFERS; return 1;
         case 0x8a30: v[0] = MAX_UNIFORM_BLOCK_SIZE; return 1; /* GL_MAX_UNIFORM_BLOCK_SIZE */
+        case 0x8a34: v[0] = UNIFORM_BUFFER_OFFSET_ALIGNMENT; return 1; /* GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT */
+        case 0x8dfb:                                                   /* GL_MAX_VERTEX_UNIFORM_VECTORS */
+        case 0x8dfd: v[0] = MAX_UNIFORM_VECTORS; return 1;             /* GL_MAX_FRAGMENT_UNIFORM_VECTORS */
+        case 0x8dfc: v[0] = MAX_VARYING_VECTORS; return 1;             /* GL_MAX_VARYING_VECTORS */
+        case 0x8dfa: v[0] = 1; return 1;                               /* GL_SHADER_COMPILER: glslc is one */
+        /* the window's surface, as the console's driver gives a game its EGL config: RGBA8, 24 bits of depth, 8 of
+           stencil */
+        case 0x0d52:                                                   /* GL_RED_BITS */
+        case 0x0d53:                                                   /* GL_GREEN_BITS */
+        case 0x0d54:                                                   /* GL_BLUE_BITS */
+        case 0x0d55: v[0] = 8; return 1;                               /* GL_ALPHA_BITS */
+        case 0x0d56: v[0] = 24; return 1;                              /* GL_DEPTH_BITS */
+        case 0x0d57: v[0] = 8; return 1;                               /* GL_STENCIL_BITS */
         default: return 0;
     }
 }

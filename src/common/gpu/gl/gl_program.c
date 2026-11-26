@@ -405,13 +405,13 @@ static int layout_bind(Link* l, uint32_t i, uint32_t* binding) {
                  x->kind == SNX_GLSLC_REFLECT_IMAGE ? "images" : "storage blocks");
         return 1;
     }
-    if (x->kind == SNX_GLSLC_REFLECT_SAMPLER && x->array) {
-        snprintf(l->why, sizeof l->why, "%s is an array of %u samplers: this platform's GL layer binds one a slot",
-                 l->names + x->name, (unsigned)x->array);
-        return 2;
-    }
-    for (uint32_t k = 0; k < i; ++k) before += l->resources[k].kind == x->kind;
-    if (before >= room) {
+    /* a sampler array takes a slot for each element: glslc makes a variable of each (split_samplers) */
+    for (uint32_t k = 0; k < i; ++k)
+        if (l->resources[k].kind == x->kind) before += x->kind == SNX_GLSLC_REFLECT_SAMPLER && l->resources[k].array
+                                                          ? l->resources[k].array
+                                                          : 1u;
+    const uint32_t count = x->kind == SNX_GLSLC_REFLECT_SAMPLER && x->array ? x->array : 1u;
+    if (before + count > room) {
         snprintf(l->why, sizeof l->why, "%s is the program's %s number %u, past the %u this platform binds",
                  l->names + x->name, x->kind == SNX_GLSLC_REFLECT_SAMPLER ? "sampler" : "uniform block",
                  (unsigned)before + 1, (unsigned)room);
@@ -495,7 +495,10 @@ static int32_t resource_at(Link* l, uint32_t binding, int stage) {
     if (binding == g_gl_program.host.layout.block_base) return -2;
     for (uint32_t i = 0; i < l->resource_count; ++i) {
         uint32_t b;
-        if (!layout_bind(l, i, &b) && b == binding) return (int32_t)i;
+        const uint32_t count = l->resources[i].kind == SNX_GLSLC_REFLECT_SAMPLER && l->resources[i].array
+                                   ? l->resources[i].array
+                                   : 1u;
+        if (!layout_bind(l, i, &b) && binding >= b && binding - b < count) return (int32_t)i;
     }
     return -1;
 }
@@ -524,6 +527,7 @@ static int compile(uint32_t ctx, const SnxGlShader* sh, Link* l) {
     /* a framebuffer is drawn with a negative viewport height: gl_FragCoord and gl_PointCoord through the draw's flip */
     o.flip_y = sh->type == GL_FRAGMENT_SHADER_ && !g_gl_program.host.stage_sets;
     o.block = l && g_gl_program.host.stage_sets ? link_block : NULL;
+    o.split_samplers = l && g_gl_program.host.stage_sets; /* one texture a slot: an array takes a run of them */
     o.desktop = ctx && snx_gl_context_api(ctx) == SNX_GL_API_DESKTOP;
     return snx_glslc_compile(&g_gl_program.workspace, &o, source, sh->source.size ? sh->source.size - 1 : 0,
                              g_gl_program.words, SNX_GLSLC_MAX_WORDS, &g_gl_program.result);
@@ -1021,9 +1025,12 @@ static int program_arrays(uint32_t name, Link* l) {
     SnxGlUniform* pu;
     int32_t *pl, *pn;
     uint32_t nb = 0, unit = 0, block_index = 0, loc = 0;
+    const int split = g_gl_program.host.stage_sets; /* a sampler array's elements are bindings of their own */
     for (uint32_t i = 0; i < l->resource_count; ++i)
-        if (l->resources[i].kind == SNX_GLSLC_REFLECT_SAMPLER)
+        if (l->resources[i].kind == SNX_GLSLC_REFLECT_SAMPLER) {
             units += l->resources[i].array ? l->resources[i].array : 1;
+            if (split && l->resources[i].array) bindings += l->resources[i].array - 1u;
+        }
     for (uint32_t i = 0; i < l->uniform_count; ++i)
         if (l->uniforms[i].block < 0) locations += l->uniforms[i].count;
     sizes[0] = bindings * sizeof(SnxGlBinding);
@@ -1071,9 +1078,25 @@ static int program_arrays(uint32_t name, Link* l) {
                 .size = l->default_size[i]};
     for (uint32_t i = 0; i < l->resource_count; ++i) {
         const Resource* r = &l->resources[i];
-        SnxGlBinding* b = &pb[nb++];
         uint32_t binding = 3 + i;
         if (g_gl_program.host.stage_sets) layout_bind(l, i, &binding); /* placed by the link, which it passed */
+        if (split && r->kind == SNX_GLSLC_REFLECT_SAMPLER && r->array) {
+            for (uint32_t k = 0; k < r->array; ++k) {
+                pb[nb++] = (SnxGlBinding){.name = r->name,
+                                          .kind = SNX_GLSLC_REFLECT_SAMPLER,
+                                          .count = 1,
+                                          .binding = (uint16_t)(binding + k),
+                                          .stages = (uint8_t)r->stages,
+                                          .size = r->size,
+                                          .texel_buffer = r->texel_buffer & 1,
+                                          .dim = (uint8_t)(r->texel_buffer >> 4),
+                                          .first = (uint16_t)(unit + k)};
+                pn[unit + k] = r->source_binding >= 0 ? r->source_binding + (int32_t)k : 0;
+            }
+            unit += r->array;
+            continue;
+        }
+        SnxGlBinding* b = &pb[nb++];
         *b = (SnxGlBinding){.name = r->name,
                             .kind = (uint8_t)r->kind,
                             .count = (uint16_t)(r->array ? r->array : 1),

@@ -53,7 +53,8 @@ static u32 components(u32 type) {
 static u32 sampler_type(const SnxGlProgram* p, int32_t unit) {
     const SnxGlUniform* u = snx_gl_program_uniforms(p);
     for (u32 i = 0; i < p->uniform_count; i++)
-        if (u[i].sampler == unit) return u[i].type;
+        if (u[i].sampler >= 0 && unit >= u[i].sampler && unit - u[i].sampler < (u[i].count ? u[i].count : 1))
+            return u[i].type; /* an array's elements too */
     return 0;
 }
 

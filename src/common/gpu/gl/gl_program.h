@@ -115,8 +115,9 @@ typedef struct {
    a program's resources, and how its programs read them, as the platform's translations of the console's programs do:
    each stage's set of blocks and set of samplers; from block_base, the stage's default block and then the program's
    uniform blocks in the order the stages declare them, blocks bindings in all; from sampler_base, the program's
-   samplers in that order, samplers bindings in all. A sampler array, an image or a storage block has no place in it:
-   the link refuses the program, naming it. Block i (from block_base) is read from a uniform buffer below
+   samplers in that order, samplers bindings in all, a sampler array a run of them, one for each element (glslc's
+   split_samplers: an element is read with a constant index). An image or a storage block has no place in it: the
+   link refuses the program, naming it. Block i (from block_base) is read from a uniform buffer below
    uniform_blocks, else as a read-only storage buffer; a stage with window_push reads its uniform
    ones through windows (glslc's SNX_GLSLC_BLOCK_WINDOW), block i's offset the 16 bits at bit 16 (i & 1) of the push
    constant word at byte window_push + 4 (i / 2) */

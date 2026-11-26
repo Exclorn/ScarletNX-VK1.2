@@ -389,6 +389,23 @@ int main(void) {
         ip = program(es, shader(es, VERTEX, vs), shader(es, FRAGMENT, image_fs));
         assert(!piv(es, ip, LINK_STATUS));
         assert(strstr(snx_gl_program_info_log(es, ip), "im is an image: this platform's GL layer binds no images yet"));
+        /* an array of samplers takes a run of slots, one for each element, from the slot its place gives: the next
+           sampler comes after the run */
+        {
+            static const char arr_fs[] = "#version 300 es\nprecision mediump float;\nuniform sampler2D arr[3];\n"
+                                         "uniform sampler2D z;\nout vec4 o;\nvoid main() { o = texture(arr[0], "
+                                         "vec2(0)) + texture(arr[2], vec2(0)) + texture(z, vec2(0)); }\n";
+            uint32_t ap = program(es, shader(es, VERTEX, vs), shader(es, FRAGMENT, arr_fs));
+            assert(piv(es, ap, LINK_STATUS));
+            const SnxGlProgram* ar = snx_gl_program(ap);
+            const uint32_t* w = snx_gl_program_spirv(ar, 1);
+            uint32_t seen = 0;
+            for (uint32_t i = 5; i < ar->spirv_words[1] && (w[i] >> 16); i += w[i] >> 16)
+                if ((w[i] & 0xffff) == 71 && w[i + 2] == 33 && w[i + 3] >= 34 && w[i + 3] < 64)
+                    seen |= 1u << (w[i + 3] - 34); /* OpDecorate Binding */
+            assert(seen == 0xfu); /* 34, 35 and 36 for arr, 37 for z */
+            assert(ar->unit_count == 4);
+        }
         /* a renderer's rules: the samplers in sets of their own (5 and 6), blocks from 1 on read as read-only storage
            buffers, and the vertex and fragment stages' uniform ones through windows, their offsets pushed from bytes
            128 and 176; the uniforms still found by the link's reflection */

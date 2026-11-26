@@ -676,6 +676,7 @@ typedef struct {
     GlslcBindFn bind; /* the backend's binding map, or NULL */
     void* bind_user;
     int map_default; /* the map places the default uniform block too */
+    int split_samplers; /* an array of samplers is a variable for each element (GlslcOptions.split_samplers) */
     int flip_y;      /* gl_FragCoord and gl_PointCoord read through the push constant's flip */
     GlslcBlockFn block; /* how each uniform block is read, or NULL */
     int desktop;     /* a desktop context's shader: GlslcOptions.desktop */

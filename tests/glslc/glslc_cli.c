@@ -6,10 +6,11 @@
    binding 32 on; with -f, gl_FragCoord and gl_PointCoord read through GlslcOptions.flip_y; with -d, as a desktop GL
    context's shader (GlslcOptions.desktop); with -w (and -m's map, the default block placed too), every uniform block
    read through a window (GlslcOptions.block), the n-th one's offset at push constant bit 1024 + 16 n; with -s, every
-   uniform block read as a read-only storage buffer. Prints FILE:LINE:COLUMN: ERROR for each file refused, the first
+   uniform block read as a read-only storage buffer; with -p (and -m), an array of samplers a variable for each element
+   (GlslcOptions.split_samplers), the map giving it a run of bindings. Prints FILE:LINE:COLUMN: ERROR for each file refused, the first
    warning of each file with warnings, and exits 1 when a file was refused.
 
-       snx-glslc-cli [-m] [-f] [-d] [-w | -s] [-o OUT.spv] FILE... */
+       snx-glslc-cli [-m] [-p] [-f] [-d] [-w | -s] [-o OUT.spv] FILE... */
 #include "glslc/glslc.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@ typedef struct {
     int map;                  /* -m */
     int flip;                 /* -f: GlslcOptions.flip_y */
     int desktop;              /* -d: GlslcOptions.desktop */
+    int split;                /* -p: GlslcOptions.split_samplers */
     int read;                 /* -w SNX_GLSLC_BLOCK_WINDOW, -s SNX_GLSLC_BLOCK_STORAGE, else 0 */
     uint32_t next[4];         /* -m's next binding of each set */
     uint32_t windows;         /* -w's windows given so far */
@@ -34,7 +36,8 @@ static int map_by_kind(void* user, const GlslcResource* r, uint32_t* set, uint32
     uint32_t* next = user;
     uint32_t k = (uint32_t)(r->kind - SNX_GLSLC_REFLECT_SAMPLER);
     *set = k;
-    *binding = r->binding >= 0 ? (uint32_t)r->binding : 32 + next[k]++;
+    *binding = r->binding >= 0 ? (uint32_t)r->binding : 32 + next[k];
+    next[k] += g_cli.split && r->array && r->kind == SNX_GLSLC_REFLECT_SAMPLER ? r->array : 1;
     return 0;
 }
 
@@ -74,6 +77,7 @@ static int compile_file(const char* path, const char* out) {
                                           .map_default = g_cli.read != 0,
                                           .flip_y = g_cli.flip,
                                           .desktop = g_cli.desktop,
+                                          .split_samplers = g_cli.split,
                                           .block = g_cli.read ? read_by_flag : NULL},
                           g_cli.source, size, g_cli.words, SNX_GLSLC_MAX_WORDS, r)) {
         printf("%s:%u:%u: %s\n", path, r->line, r->column, r->error);
@@ -94,10 +98,12 @@ int main(int argc, char** argv) {
     const char* out = NULL;
     int first = 1;
     while (argc > 1 && (!strcmp(argv[1], "-m") || !strcmp(argv[1], "-f") || !strcmp(argv[1], "-d") ||
-                        !strcmp(argv[1], "-w") || !strcmp(argv[1], "-s"))) {
+                        !strcmp(argv[1], "-w") || !strcmp(argv[1], "-s") || !strcmp(argv[1], "-p"))) {
         if (argv[1][1] == 'm') g_cli.map = 1;
         else if (argv[1][1] == 'd')
             g_cli.desktop = 1;
+        else if (argv[1][1] == 'p')
+            g_cli.split = 1;
         else if (argv[1][1] == 'w')
             g_cli.read = SNX_GLSLC_BLOCK_WINDOW;
         else if (argv[1][1] == 's')
