@@ -33,7 +33,7 @@ typedef struct {
 static EmitTest g_emit_test;
 
 static int compile(GlslcStage stage, const char* source) {
-    return snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){stage, NULL, NULL, 0, 0, 0, NULL}, source,
+    return snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){stage, NULL, NULL, 0, 0, 0, NULL, 0}, source,
                              strlen(source), g_emit_test.words, SNX_GLSLC_MAX_WORDS, &g_emit_test.result);
 }
 
@@ -105,20 +105,20 @@ static void module(void) {
     assert(r->words == n && !memcmp(g_emit_test.words, g_emit_test.words2, n * sizeof(uint32_t)));
     /* a buffer too small: -1, and the size it needs */
     GlslcResult* small = &g_emit_test.again;
-    assert(snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){SNX_GLSLC_COMPUTE, NULL, NULL, 0, 0, 0, NULL},
+    assert(snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){SNX_GLSLC_COMPUTE, NULL, NULL, 0, 0, 0, NULL, 0},
                              source, sizeof source - 1, g_emit_test.words2, 7, small) == -1);
     assert(small->words == n && small->line == 0);
     char want[128];
     snprintf(want, sizeof want, "the SPIR-V module has %u words, and the buffer holds 7", n);
     assert(!strcmp(small->error, want));
-    assert(snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){SNX_GLSLC_COMPUTE, NULL, NULL, 0, 0, 0, NULL},
+    assert(snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){SNX_GLSLC_COMPUTE, NULL, NULL, 0, 0, 0, NULL, 0},
                              source, sizeof source - 1, NULL, 0, small) == -1 &&
            small->words == n);
     /* what the API refuses before compiling */
-    assert(snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){(GlslcStage)3, NULL, NULL, 0, 0, 0, NULL}, source,
+    assert(snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){(GlslcStage)3, NULL, NULL, 0, 0, 0, NULL, 0}, source,
                              sizeof source - 1, g_emit_test.words2, 7, small) == -1);
     assert(!strcmp(small->error, "stage 3 is not one glslc compiles: vertex (0), fragment (1) or compute (2)"));
-    assert(snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){SNX_GLSLC_VERTEX, NULL, NULL, 0, 0, 0, NULL}, NULL,
+    assert(snx_glslc_compile(&g_emit_test.workspace, &(GlslcOptions){SNX_GLSLC_VERTEX, NULL, NULL, 0, 0, 0, NULL, 0}, NULL,
                              4, g_emit_test.words2, 7, small) == -1);
     assert(!strcmp(small->error, "the source is NULL with a size of 4 bytes"));
     /* an error's place and the warning's */
@@ -254,7 +254,7 @@ static void workspace(void) {
     w.size = 16;
     static const char frag[] =
         "#version 300 es\nprecision mediump float;\nout vec4 c;\nvoid main() { c = vec4(1.0); }\n";
-    assert(snx_glslc_compile(&w, &(GlslcOptions){SNX_GLSLC_FRAGMENT, NULL, NULL, 0, 0, 0, NULL}, frag, sizeof frag - 1,
+    assert(snx_glslc_compile(&w, &(GlslcOptions){SNX_GLSLC_FRAGMENT, NULL, NULL, 0, 0, 0, NULL, 0}, frag, sizeof frag - 1,
                              g_emit_test.words, SNX_GLSLC_MAX_WORDS, r) == -1);
     snprintf(want, sizeof want, "the workspace is 16 bytes, and a compilation needs %zu (snx_glslc_workspace_size)",
              need);
@@ -316,7 +316,7 @@ static int map_too_far(void* user, const GlslcResource* r, uint32_t* set, uint32
 }
 
 static int compile_mapped(GlslcBindFn bind, const char* source) {
-    GlslcOptions o = {SNX_GLSLC_FRAGMENT, bind, &g_emit_test.map, 0, 0, 0, NULL};
+    GlslcOptions o = {SNX_GLSLC_FRAGMENT, bind, &g_emit_test.map, 0, 0, 0, NULL, 0};
     memset(&g_emit_test.map, 0, sizeof g_emit_test.map);
     return snx_glslc_compile(&g_emit_test.workspace, &o, source, strlen(source), g_emit_test.words, SNX_GLSLC_MAX_WORDS,
                              &g_emit_test.result);
@@ -336,7 +336,7 @@ static void default_block_mapped(void) {
     static const char frag[] = "#version 300 es\nprecision highp float;\nuniform sampler2D t;\nuniform vec4 tint;\n"
                                "uniform float scale;\nout vec4 c;\n"
                                "void main() { c = texture(t, vec2(0.0)) * tint * scale; }\n";
-    GlslcOptions o = {SNX_GLSLC_FRAGMENT, map_default_apart, &g_emit_test.map, 1, 0, 0, NULL};
+    GlslcOptions o = {SNX_GLSLC_FRAGMENT, map_default_apart, &g_emit_test.map, 1, 0, 0, NULL, 0};
     memset(&g_emit_test.map, 0, sizeof g_emit_test.map);
     assert(snx_glslc_compile(&g_emit_test.workspace, &o, frag, sizeof frag - 1, g_emit_test.words, SNX_GLSLC_MAX_WORDS,
                              &g_emit_test.result) == 0);
@@ -360,7 +360,7 @@ static void flip_y(void) {
     static const char frag[] = "#version 300 es\nprecision highp float;\nout vec4 c;\n"
                                "void main() { c = vec4(gl_PointCoord, gl_FragCoord.yy); }\n";
     for (int flip = 0; flip < 2; ++flip) {
-        GlslcOptions o = {SNX_GLSLC_FRAGMENT, NULL, NULL, 0, flip, 0, NULL};
+        GlslcOptions o = {SNX_GLSLC_FRAGMENT, NULL, NULL, 0, flip, 0, NULL, 0};
         assert(snx_glslc_compile(&g_emit_test.workspace, &o, frag, sizeof frag - 1, g_emit_test.words,
                                  SNX_GLSLC_MAX_WORDS, &g_emit_test.result) == 0);
         int push = 0, privates = 0, builtins = 0;
@@ -382,7 +382,7 @@ static void flip_y(void) {
    __VERSION__ and in OpSource (GLSL); GLSL ES as it is, its fragment shader still needing float's precision; and what
    is refused, by its message */
 static int compile_as(GlslcStage stage, const char* source, int desktop) {
-    GlslcOptions o = {stage, NULL, NULL, 0, 0, desktop, NULL};
+    GlslcOptions o = {stage, NULL, NULL, 0, 0, desktop, NULL, 0};
     return snx_glslc_compile(&g_emit_test.workspace, &o, source, strlen(source), g_emit_test.words, SNX_GLSLC_MAX_WORDS,
                              &g_emit_test.result);
 }
