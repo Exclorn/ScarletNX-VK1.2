@@ -59,11 +59,12 @@ void am_init(void) {
     g_hle.am.launchable_event = owned_event("am:library applet launchable");
     g_hle.am.resolution_event = owned_event("am:display resolution change");
     g_hle.am.next_layer = 1;
-    /* the application starts in focus, and is told so, then that the performance mode is set (the SDK reads it on
-       that message) */
+    /* the application starts in focus, and is told so. It is not told of an operation or performance mode change: those
+       come when the console's mode changes (am_display_mode_changed), as the applet lifecycle of the yuzu family has
+       them. A message at start-up wakes the SDK's message thread before the game has made what that thread's handler
+       reads: it crashed on a null object while the main thread was still in its graphics setup */
     g_hle.am.msgs[0] = AM_MSG_FOCUS_STATE_CHANGED;
-    g_hle.am.msgs[1] = AM_MSG_PERFORMANCE_MODE_CHANGED;
-    g_hle.am.count = 2;
+    g_hle.am.count = 1;
     ev_signal(g_hle.am.msg_event);
     ev_signal(g_hle.am.launchable_event);
 }

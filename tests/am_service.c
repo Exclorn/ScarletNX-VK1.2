@@ -996,16 +996,14 @@ static void am_events_release(void) {
     kobj_unref(&kev(g_hle.am.launchable_event)->o);
     kobj_unref(&kev(g_hle.am.resolution_event)->o);
 }
-/* am_init: the focus message, then the performance mode's, and the launchable event signaled */
+/* am_init: the focus message alone (the mode messages come with a mode change), and the launchable event signaled */
 static void test_messages(void) {
     nn_am_AppletMessage m = 0;
     u32 h;
     am_init();
     CHECK(nn_am_service_ICommonStateGetter_ReceiveMessage(NULL, &m) == 0 && m == 15);
     CHECK(kev(g_hle.am.msg_event)->signaled);
-    CHECK(nn_am_service_ICommonStateGetter_ReceiveMessage(NULL, &m) == 0 && m == 31);
-    CHECK(!kev(g_hle.am.msg_event)->signaled);
-    CHECK(nn_am_service_ICommonStateGetter_ReceiveMessage(NULL, &m) == RC(128, 3));
+    CHECK(nn_am_service_ICommonStateGetter_ReceiveMessage(NULL, &m) == RC(128, 3) && !kev(g_hle.am.msg_event)->signaled);
     CHECK(nn_am_service_ISelfController_GetLibraryAppletLaunchableEvent(NULL, &h) == 0);
     CHECK(test_handles[h - 0x100] == &kev(g_hle.am.launchable_event)->o && kev(g_hle.am.launchable_event)->signaled);
     close_handles();
@@ -1130,7 +1128,7 @@ static void test_movie_maker(void) {
     test_log[0] = 0;
     close_handles();
 }
-/* ICommonStateGetter: 130 queues the start-up logo's message, 95, behind the focus and performance ones at startup;
+/* ICommonStateGetter: 130 queues the start-up logo's message, 95, behind the focus one at startup;
    1000 to 1002 keep 3D VR mode; 300 says the platform region is Global */
 static void test_state_getter(void) {
     u32 message = 0, region = 0;
@@ -1143,7 +1141,7 @@ static void test_state_getter(void) {
         logo += message == AM_MSG_STARTUP_LOGO_GONE;
         received++;
     }
-    CHECK(received == 3 && logo == 1 && !kev(g_hle.am.msg_event)->signaled);
+    CHECK(received == 2 && logo == 1 && !kev(g_hle.am.msg_event)->signaled);
     CHECK(nn_am_service_ICommonStateGetter_IsVrModeEnabled3d(NULL, &vr) == 0 && vr == 0);
     CHECK(nn_am_service_ICommonStateGetter_BeginVrMode3d(NULL) == 0);
     CHECK(nn_am_service_ICommonStateGetter_IsVrModeEnabled3d(NULL, &vr) == 0 && vr == 1);
