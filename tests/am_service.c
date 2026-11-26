@@ -1001,9 +1001,10 @@ static void test_messages(void) {
     nn_am_AppletMessage m = 0;
     u32 h;
     am_init();
-    CHECK(nn_am_service_ICommonStateGetter_ReceiveMessage(NULL, &m) == 0 && m == 15);
     CHECK(kev(g_hle.am.msg_event)->signaled);
-    CHECK(nn_am_service_ICommonStateGetter_ReceiveMessage(NULL, &m) == RC(128, 3) && !kev(g_hle.am.msg_event)->signaled);
+    CHECK(nn_am_service_ICommonStateGetter_ReceiveMessage(NULL, &m) == 0 && m == 15);
+    CHECK(!kev(g_hle.am.msg_event)->signaled);
+    CHECK(nn_am_service_ICommonStateGetter_ReceiveMessage(NULL, &m) == RC(128, 3));
     CHECK(nn_am_service_ISelfController_GetLibraryAppletLaunchableEvent(NULL, &h) == 0);
     CHECK(test_handles[h - 0x100] == &kev(g_hle.am.launchable_event)->o && kev(g_hle.am.launchable_event)->signaled);
     close_handles();
