@@ -678,6 +678,15 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
         r->index.restart_index = r->index.format == 0 ? 0xff : r->index.format == 1 ? 0xffff : 0xffffffffu;
     }
     fixed_state(ctx, r);
+    {
+        const SnxGlFixed* f = snx_gl_fixed(ctx); /* the first draws' state, for a picture that is drawn but wrong */
+        LOG_LIMIT(80, "gl draw: ctx %u program %u framebuffer %u target %ux%u viewport %d,%d %dx%d scissor %s %d,%d %dx%d\n",
+                  (unsigned)ctx, (unsigned)program, (unsigned)snx_gl_framebuffers(ctx)->draw,
+                  r->tgt.count ? (unsigned)r->tgt.color[0].width : 0u, (unsigned)surface_height(&r->tgt),
+                  (int)f->viewport[0], (int)f->viewport[1], (int)f->viewport[2], (int)f->viewport[3],
+                  f->scissor_test ? "on" : "off", (int)f->scissor[0], (int)f->scissor[1], (int)f->scissor[2],
+                  (int)f->scissor[3]);
+    }
     r->dyn.depth_word = call->base_instance;
     constants(ctx, p, si, r, serial);
     r->call.state_flags |= DS_DRAW_POINT_SIZE;
