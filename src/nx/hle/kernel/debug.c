@@ -166,9 +166,10 @@ static void backtrace(int lvl, u64 lr, u64 fp, int wide) {
 /* the code from lo to hi, 16 words (0x40 bytes) a line, each line only when it is mapped; the word at mark in
    brackets */
 static void dump_code(int lvl, const char* what, u64 lo, u64 hi, u64 mark) {
-    u64 a;
+    u64 a, n;
     mark &= ~3ull;
-    for (a = lo & ~3ull; a < hi; a += 0x40) {
+    /* counted, not bounded by hi: a range near 0 or the top of the address space wraps, and a < hi would then walk 2^58 chunks */
+    for (a = lo & ~3ull, n = hi > lo ? (hi - lo + 0x3f) / 0x40 : 0; n; n--, a += 0x40) {
         char line[16 * 10 + 1];
         size_t l = 0;
         int i;
