@@ -121,6 +121,7 @@ static struct {
     struct {
         u32 generation, vs, fs;
     } ids[SNX_GL_PROGRAM_NAMES];
+    u32 draws[2]; /* the draws made since the last swap: to a framebuffer object, to the window */
 } g_gl_draw;
 
 /* ---- the layer's memory for the draws ---- */
@@ -679,13 +680,20 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
     }
     fixed_state(ctx, r);
     {
-        const SnxGlFixed* f = snx_gl_fixed(ctx); /* the first draws' state, for a picture that is drawn but wrong */
-        LOG_LIMIT(80, "gl draw: ctx %u program %u framebuffer %u target %ux%u viewport %d,%d %dx%d scissor %s %d,%d %dx%d\n",
-                  (unsigned)ctx, (unsigned)program, (unsigned)snx_gl_framebuffers(ctx)->draw,
-                  r->tgt.count ? (unsigned)r->tgt.color[0].width : 0u, (unsigned)surface_height(&r->tgt),
-                  (int)f->viewport[0], (int)f->viewport[1], (int)f->viewport[2], (int)f->viewport[3],
-                  f->scissor_test ? "on" : "off", (int)f->scissor[0], (int)f->scissor[1], (int)f->scissor[2],
-                  (int)f->scissor[3]);
+        const SnxGlFixed* f = snx_gl_fixed(ctx); /* the state of some draws, for a picture that is drawn but wrong */
+        u32 fb = snx_gl_framebuffers(ctx)->draw;
+        g_gl_draw.draws[fb != 0]++;
+        if (fb) {
+            LOG_LIMIT(20, "gl draw: ctx %u program %u framebuffer %u target %ux%u viewport %d,%d %dx%d\n",
+                      (unsigned)ctx, (unsigned)program, (unsigned)fb,
+                      r->tgt.count ? (unsigned)r->tgt.color[0].width : 0u, (unsigned)surface_height(&r->tgt),
+                      (int)f->viewport[0], (int)f->viewport[1], (int)f->viewport[2], (int)f->viewport[3]);
+        } else {
+            LOG_LIMIT(60, "gl draw to the window: ctx %u program %u target %ux%u viewport %d,%d %dx%d scissor %s\n",
+                      (unsigned)ctx, (unsigned)program, r->tgt.count ? (unsigned)(r->tgt.color[0].width / 4) : 0u,
+                      (unsigned)surface_height(&r->tgt), (int)f->viewport[0], (int)f->viewport[1],
+                      (int)f->viewport[2], (int)f->viewport[3], f->scissor_test ? "on" : "off");
+        }
     }
     r->dyn.depth_word = call->base_instance;
     constants(ctx, p, si, r, serial);
@@ -698,6 +706,11 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
 }
 
 u64 gl_draw_issue(void) { return ++g_gl_draw.issued; }
+void gl_draw_swapped(u32 surface, u32 w, u32 h) {
+    LOG_LIMIT(40, "gl swap: window surface %u (%ux%u) after %u draws to framebuffer objects and %u to the window\n",
+              (unsigned)surface, (unsigned)w, (unsigned)h, (unsigned)g_gl_draw.draws[1], (unsigned)g_gl_draw.draws[0]);
+    g_gl_draw.draws[0] = g_gl_draw.draws[1] = 0;
+}
 void gl_draw_done(u64 serial) { atomic_store_explicit(&g_gl_draw.completed, serial, memory_order_release); }
 
 int gl_draw_clear(u32 ctx, u32 buffers) {

@@ -74,6 +74,8 @@ void gl_draw_wait(u32 ctx, u64 serial);
 /* other work handed to the GPU thread in the same order (a texture's upload, its levels): its serial, under the object
    lock, and its end there, so a range given back waits for it too */
 u64 gl_draw_issue(void);
+/* a swap of the window surface s (w by h), for the log of what was drawn to it */
+void gl_draw_swapped(u32 s, u32 w, u32 h);
 void gl_draw_done(u64 serial);
 /* the shared layer's textures keep their texels in guest memory, and say in the log what they leave out */
 void gl_texture_calls_init(void);

@@ -127,6 +127,7 @@ static void present_on_gpu(void* arg) {
 }
 void gl_host_present(u32 s, u32 interval) {
     GlSurface* g = &g_gl_host.surfaces[s - 1];
+    gl_draw_swapped(s, g->w, g->h);
     GlPresent* p = &g_gl_host.present[s - 1][g->next];
     /* off the guest core while it waits for the display, as NVN's present waits: the threads of the swapping
        thread's core run meanwhile (a game's texture loader, behind its main thread, waited for its core 47 s of a
