@@ -20,7 +20,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SNX_GL_PROGRAM_NAMES 1024 /* names of shaders and programs, one space: 54 programs of two stages in a game */
+/* names of shaders and programs, one space. A game's interface builds a program for each variant of its materials, and
+   keeps each with its two shaders: over 340 programs at 3 names each, before the first menu */
+#define SNX_GL_PROGRAM_NAMES 8192
 #define SNX_GL_PIPELINES     64   /* program pipelines */
 #define SNX_GL_UBO_BINDINGS  36   /* uniform buffer binding points, GL_MAX_UNIFORM_BUFFER_BINDINGS */
 #define SNX_GL_ATTRIBS       16   /* GL_MAX_VERTEX_ATTRIBS */

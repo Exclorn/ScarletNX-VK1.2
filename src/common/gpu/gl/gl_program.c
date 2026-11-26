@@ -159,7 +159,16 @@ static uint32_t new_name(uint32_t ctx) {
     for (uint32_t i = 0; i < SNX_GL_PROGRAM_NAMES; i++)
         if (!S.shaders[i].used && !S.programs[i].used) return i + 1;
     if (ctx) snx_gl_error(ctx, GL_OUT_OF_MEMORY_);
-    say("every one of the %d names of shaders and programs is used: GL_OUT_OF_MEMORY", SNX_GL_PROGRAM_NAMES);
+    uint32_t shaders = 0, programs = 0, linked = 0, deleted = 0;
+    for (uint32_t i = 0; i < SNX_GL_PROGRAM_NAMES; i++) {
+        shaders += S.shaders[i].used;
+        programs += S.programs[i].used;
+        linked += S.programs[i].used && S.programs[i].linked;
+        deleted += (S.shaders[i].used && S.shaders[i].deleted) + (S.programs[i].used && S.programs[i].deleted);
+    }
+    say("every one of the %d names of shaders and programs is used (%u shaders, %u programs of which %u linked, %u "
+        "deleted but held): GL_OUT_OF_MEMORY",
+        SNX_GL_PROGRAM_NAMES, shaders, programs, linked, deleted);
     return 0;
 }
 static void no_room(uint32_t ctx, const char* what) {
