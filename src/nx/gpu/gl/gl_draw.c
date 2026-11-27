@@ -653,6 +653,9 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
     u32 program;
     const SnxGlProgram* p;
     DrawRecord* r;
+    if (snx_gl_framebuffers(ctx)->draw == 0) /* a draw to the window: where it goes, and each way it can be dropped */
+        LOG_LIMIT(30, "gl draw call to the window: ctx %u window surface %u current program %u\n", (unsigned)ctx,
+                  (unsigned)gl_egl_draw(), (unsigned)snx_gl_current_program(ctx));
     if (memory_ready()) return 0;
     p = draw_program(ctx, &program, si);
     if (!p) return 0;
@@ -661,6 +664,8 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
     r->ctx = ctx, r->program = program, r->generation = p->generation, r->call = *call;
     serial = g_gl_draw.issued + 1; /* the record's below: the steps between hand nothing over */
     if (!targets(ctx, &r->tgt) || !vertex_state(ctx, p, &si[0], r, serial)) {
+        LOG_LIMIT(30, "gl draw dropped: ctx %u framebuffer %u window surface %u (no target, or the vertex state failed)\n",
+                  (unsigned)ctx, (unsigned)snx_gl_framebuffers(ctx)->draw, (unsigned)gl_egl_draw());
         free(r);
         return 0;
     }
@@ -716,6 +721,8 @@ void gl_draw_done(u64 serial) { atomic_store_explicit(&g_gl_draw.completed, seri
 int gl_draw_clear(u32 ctx, u32 buffers) {
     const SnxGlFixed* g = snx_gl_fixed(ctx);
     DrawRecord* r;
+    LOG_LIMIT(30, "gl clear: ctx %u framebuffer %u window surface %u buffers 0x%x\n", (unsigned)ctx,
+              (unsigned)snx_gl_framebuffers(ctx)->draw, (unsigned)gl_egl_draw(), (unsigned)buffers);
     if (memory_ready()) return 0;
     r = calloc(1, sizeof *r);
     if (!r) fatal("gl layer: out of memory for a clear");
