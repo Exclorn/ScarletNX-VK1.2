@@ -41,6 +41,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "nx/gpu/nvn/nvn_object.h"
+
+/* the NVN side of the GL interop (nvn_object.c) is not linked here: the layer gives its table, and the test keeps it */
+static const NvnGlInterop* g_interop;
+void nvn_gl_interop(const NvnGlInterop* interop) { g_interop = interop; }
 
 #define MAIN    0x10000u
 #define DRIVER  0x20000u
