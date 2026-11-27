@@ -293,7 +293,7 @@ hook nvnProgramInitializeFromBuilder(NVNprogram* p, const NVNprogramBuilder* b) 
 
 family sync
 hook nvnSyncCreateGLSync(const NVNsync* s, u64* gl_sync) -> i32
-hook nvnSyncInitializeFromFencedGLSync(NVNsync* s, NVNdevice* d, u32 gl_sync, i32* status) -> bool
+hook nvnSyncInitializeFromFencedGLSync(NVNsync* s, NVNdevice* d, u64 gl_sync, i32* status) -> bool
 hook nvnSyncFinalize(NVNsync* s)
 hook nvnSyncInitialize(NVNsync* s, NVNdevice* d) -> bool
 hook nvnSyncWait(const NVNsync* sync, u64 timeout) -> NVNsyncWaitResult

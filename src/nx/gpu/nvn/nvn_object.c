@@ -2433,7 +2433,7 @@ int nvn_subroutine_apply(u32 handle, i32 first, i32 count, const i32* values) {
    from a live GL fence is signaled at once, and a GL fence made for an NVN sync is the GL layer's own, as the GL layer
    makes them. With no GL layer, InitializeFromFencedGLSync fails as the game's driver fails without one (status 1,
    false), and CreateGLSync answers 4, its failure, writing nothing */
-int nvn_SyncInitializeFromFencedGLSync(CPU* c, u64 s, u64 d, u32 gl_sync, u64 status) {
+int nvn_SyncInitializeFromFencedGLSync(CPU* c, u64 s, u64 d, u64 gl_sync, u64 status) { /* a GLsync is 64 bits */
     NvnSync o = {0};
     (void)c;
     (void)d;
