@@ -212,9 +212,29 @@ static int texture_entry(u32 name) {
     NvnTexture n;
     int32_t levels;
     u32 words[8];
-    if (!t || !snx_gl_texture_complete(name, &levels) || !gl_nvn_texture(name, &n) || !n.gpu) return 0;
+    if (!t || !snx_gl_texture_complete(name, &levels)) {
+        /* a draw that samples zeros: which texture, and what it lacks */
+        if (t)
+            LOG_LIMIT(40, "gl texture %u samples as incomplete: format %d %dx%d, levels %d, base %d, max %d, defined 0x%x, target %u\n",
+                      (unsigned)name, (int)t->format, (int)t->width, (int)t->height, (int)t->levels,
+                      (int)t->base_level, (int)t->max_level, (unsigned)t->defined, (unsigned)t->target);
+        else
+            LOG_LIMIT(40, "gl texture %u: no such texture is bound to a unit a program samples\n", (unsigned)name);
+        return 0;
+    }
+    if (!gl_nvn_texture(name, &n) || !n.gpu) {
+        LOG_LIMIT(40, "gl texture %u has no storage the renderer can sample: format %d %dx%d\n", (unsigned)name,
+                  (int)t->format, (int)t->width, (int)t->height);
+        return 0;
+    }
     NvnView v = {.set = NVN_VIEW_LEVELS, .base_level = (u8)t->base_level, .levels = (u8)levels};
-    if (!nvn_tic_encode(&n, &v, 0, 0, words)) return 0;
+    if (!nvn_tic_encode(&n, &v, 0, 0, words)) {
+        LOG_LIMIT(40, "gl texture %u has no sampling format: format %d, NVN format 0x%x\n", (unsigned)name,
+                  (int)t->format, (unsigned)n.d.format);
+        return 0;
+    }
+    LOG_LIMIT(30, "gl texture %u samples: %dx%d, NVN format 0x%x, %d levels\n", (unsigned)name, (int)t->width,
+              (int)t->height, (unsigned)n.d.format, (int)levels);
     descriptor_put(g_gl_draw.tic + (u64)name * 32, words);
     return 1;
 }
@@ -232,6 +252,9 @@ static void texture_handles(u32 ctx, const SnxGlProgram* p, const ShaderInfo* si
         if (x->kind != SNX_GLSLC_REFLECT_SAMPLER || x->binding < SNX_VKB_TEX || k >= SH_MAXTEX) continue;
         unit = (u32)units[x->first];
         texture = snx_gl_unit_texture(ctx, unit, x->dim);
+        LOG_LIMIT(60, "gl draw sampler: slot %u (%u in the program's %u) takes unit %u, texture %u, sampler object %u\n", k,
+                  (unsigned)x->first, (unsigned)si->ntex, unit, texture,
+                  unit < SNX_GL_UNITS ? (unsigned)snx_gl_textures(ctx)->samplers[unit] : 0u);
         if (!texture_entry(texture)) continue;
         sampler = unit < SNX_GL_UNITS ? snx_gl_textures(ctx)->samplers[unit] : 0;
         if (sampler) {
