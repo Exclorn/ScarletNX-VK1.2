@@ -39,8 +39,10 @@ static uint64_t renderbuffer_bytes(uint32_t name, uint64_t* align) {
         return 0;
     }
     nvn_tex_storage(&n.d, &st);
-    *align = st.align > 256 ? st.align : 256;
-    return st.size;
+    /* whole CPU pages: a GL buffer that the CPU writes must not share a page with a block linear target, or each
+       write traps the target's watch and the target is published again at the next release */
+    *align = st.align > 4096 ? st.align : 4096;
+    return (st.size + 4095) & ~(uint64_t)4095;
 }
 void gl_framebuffer_calls_init(void) {
     snx_gl_framebuffer_host(&(SnxGlFramebufferHost){.storage_bytes = renderbuffer_bytes});
