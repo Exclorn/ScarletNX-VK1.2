@@ -235,6 +235,20 @@ static int texture_entry(u32 name) {
     }
     LOG_LIMIT(30, "gl texture %u samples: %dx%d, NVN format 0x%x, %d levels\n", (unsigned)name, (int)t->width,
               (int)t->height, (unsigned)n.d.format, (int)levels);
+    {   /* a diagnostic: does the CPU's copy of the texels hold anything? Said when that is first known and when it changes */
+        static u8 seen[256];
+        const u8* kept = t->texels ? snx_gl_client_bytes(t->texels) : NULL;
+        if (name < sizeof seen && seen[name] != 2) {
+            u64 scan = t->texels_size < 262144 ? t->texels_size : 262144, nonzero = 0;
+            for (u64 i = 0; kept && i < scan; i++) nonzero += kept[i] != 0;
+            if (!seen[name] || nonzero) {
+                LOG_LIMIT(60, "gl texture %u texels: %llu of the first %llu bytes are not zero (%s), defined levels 0x%x\n",
+                          (unsigned)name, (unsigned long long)nonzero, (unsigned long long)scan,
+                          kept ? "kept" : "not kept", (unsigned)t->defined);
+                seen[name] = nonzero ? 2 : 1;
+            }
+        }
+    }
     descriptor_put(g_gl_draw.tic + (u64)name * 32, words);
     return 1;
 }
