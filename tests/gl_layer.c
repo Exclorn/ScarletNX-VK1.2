@@ -498,6 +498,12 @@ int main(void) {
 
     gl_loader_init();
     for (size_t i = 0; i < EXPORTS; i++) assert(*slot(at(exports[i])) != own);
+    /* NVN got its GL interop: a texture name or a fence the layer doesn't have is none */
+    assert(g_interop && g_interop->texture && g_interop->fenced && g_interop->create);
+    {
+        NvnTexture none;
+        assert(!g_interop->texture(12345, &none) && !g_interop->fenced(0x100000001ull));
+    }
 
     /* EGL: the display, a matching config and one that isn't, an attribute the config hasn't */
     assert(call("eglGetDisplay", 0, 0, 0, 0, 0) == 1);
