@@ -1034,6 +1034,44 @@ static void tex_init(u64 t, i32 format, i32 w, i32 h, i32 flags) {
     nvn_TextureBuilderSetStorage(NULL, TEX_B, POOL, 0x20000);
     check(nvn_TextureInitialize(NULL, t, TEX_B), "a texture");
 }
+/* the GL layer's side of the interop, as a stand-in: texture 5 has storage, fence 9 is alive */
+static int gl_texture_stub(u32 name, NvnTexture* out) {
+    *out = (NvnTexture){0};
+    if (name != 5) return 0;
+    out->d = (NvnTexDesc){.format = NVN_FORMAT_RGBA8, .target = NVN_TEXTURE_TARGET_2D, .levels = 1, .width = 64, .height = 32,
+                          .depth = 1};
+    out->gpu = 0x123000, out->memory = 0x456000, out->size = 0x2000;
+    return 1;
+}
+static int gl_fenced_stub(u64 sync) { return sync == 9; }
+static int gl_create_stub(u64* sync) { return *sync = 0x700000001ull, 1; }
+static void test_gl_interop(void) {
+    static const NvnGlInterop interop = {.texture = gl_texture_stub, .fenced = gl_fenced_stub, .create = gl_create_stub};
+    u64 s = SCRATCH;
+    nvn_gl_interop(&interop);
+    gw32(s, 7);
+    check(nvn_SyncInitializeFromFencedGLSync(NULL, SCRATCH2, DEVICE, 9, s) && gr32(s) == 0, "a live GL fence: a sync");
+    static CPU cpu;
+    check(nvn_SyncWait(&cpu, SCRATCH2, 0) == NVN_SYNC_WAIT_RESULT_ALREADY_SIGNALED, "it is signaled at once");
+    gw32(s, 7);
+    check(!nvn_SyncInitializeFromFencedGLSync(NULL, SCRATCH2, DEVICE, 8, s) && gr32(s) == 1, "no such GL fence: status 1");
+    memset(GP(s), 0, 8);
+    u64 made;
+    check(nvn_SyncCreateGLSync(NULL, SCRATCH2, s) == 0 && (memcpy(&made, GP(s), 8), made) == 0x700000001ull,
+          "a GL fence made for a sync");
+    /* a texture built over GL texture 5 takes its storage and extent, not the builder's */
+    tex_init(TEX, NVN_FORMAT_RGBA8, 256, 128, 0);
+    nvn_TextureBuilderSetGLTextureName(NULL, TEX_B, 5);
+    check(nvn_TextureInitialize(NULL, TEX, TEX_B), "a texture over a GL texture");
+    check(nvn_TextureGetWidth(NULL, TEX) == 64 && nvn_TextureGetHeight(NULL, TEX) == 32, "the GL texture's extent");
+    check(NVN_OBJ(NvnTexture, TEX)->gpu == 0x123000 && NVN_OBJ(NvnTexture, TEX)->memory == 0x456000, "its storage");
+    nvn_TextureFinalize(NULL, TEX);
+    /* a name with no storage keeps the builder's */
+    tex_init(TEX, NVN_FORMAT_RGBA8, 256, 128, 0);
+    nvn_TextureBuilderSetGLTextureName(NULL, TEX_B, 6);
+    check(nvn_TextureInitialize(NULL, TEX, TEX_B) && nvn_TextureGetWidth(NULL, TEX) == 256, "no storage: the builder's");
+    nvn_gl_interop(NULL);
+}
 static void test_texture(void) {
     u64 s = SCRATCH;
     unsigned th, td;
@@ -1297,6 +1335,7 @@ static void test_objects(void) {
     check(!nvn_SyncInitializeFromFencedGLSync(NULL, SCRATCH2, DEVICE, 5, s) && gr32(s) == 1,
           "no OpenGL sync: status 1");
     check(nvn_SyncCreateGLSync(NULL, SCRATCH2, s) == 4, "no OpenGL sync to make");
+    test_gl_interop();
 }
 
 /* A synthetic map has two callsites: uniform3[2] and uniform9, each with two compatible target IDs.

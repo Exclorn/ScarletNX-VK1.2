@@ -1076,6 +1076,9 @@ u64 nvn_TextureBuilderGetStorageAlignment(CPU* c, u64 b) {
     nvn_tex_storage(&TB(b)->d, &st);
     return st.align;
 }
+/* OpenGL interop (nvn_object.h): the GL layer's functions, NULL with no GL layer */
+static const NvnGlInterop* g_gl_interop;
+void nvn_gl_interop(const NvnGlInterop* interop) { g_gl_interop = interop; }
 int nvn_TextureInitialize(CPU* c, u64 t, u64 b) {
     const NvnTexBuilder* s = TB(b);
     NvnTexture o = {0};
@@ -1097,6 +1100,20 @@ int nvn_TextureInitialize(CPU* c, u64 t, u64 b) {
     o.memory = memory ? memory + (u64)s->offset : 0;
     o.size = l.size;
     memcpy(o.layout, s->layout, sizeof o.layout);
+    /* a texture over a GL texture's storage (SetGLTextureName): the GL layer's description of it, which it draws and
+       samples through, in place of the builder's extent and pool */
+    if (s->gl_name && g_gl_interop && g_gl_interop->texture) {
+        NvnTexture g;
+        if (g_gl_interop->texture(s->gl_name, &g) && g.gpu && g.size) {
+            o = g;
+            o.magic = NVN_MAGIC('T', 'E', 'X', 0);
+            LOG_LIMIT(8, "nvn: a texture over GL texture %u: format %#x, %ux%u\n", (unsigned)s->gl_name,
+                      (unsigned)o.d.format, (unsigned)o.d.width, (unsigned)o.d.height);
+        } else {
+            LOG_LIMIT(8, "nvn: GL texture %u has no storage the layer can share: the builder's is used\n",
+                      (unsigned)s->gl_name);
+        }
+    }
     o.serial = nvn_serial();
     if (o.d.format < 256 && !(atomic_fetch_or_explicit(&g_nvn.object.formats[o.d.format >> 5], 1u << (o.d.format & 31),
                                                        memory_order_relaxed) &
@@ -2411,23 +2428,39 @@ int nvn_subroutine_apply(u32 handle, i32 first, i32 count, const i32* values) {
 }
 
 /* ============================================================ syncs */
-/* OpenGL interop: there is no OpenGL here. InitializeFromFencedGLSync fails as the game's driver fails without one
-   (status 1, false), and CreateGLSync answers 4, its failure, writing nothing */
+/* OpenGL interop. The GL layer's draws and NVN's replays run on one GPU thread in the order they were handed to it, so
+   a GL fence that the game made after its draws are recorded is passed by any NVN work it submits after it: a sync made
+   from a live GL fence is signaled at once, and a GL fence made for an NVN sync is the GL layer's own, as the GL layer
+   makes them. With no GL layer, InitializeFromFencedGLSync fails as the game's driver fails without one (status 1,
+   false), and CreateGLSync answers 4, its failure, writing nothing */
 int nvn_SyncInitializeFromFencedGLSync(CPU* c, u64 s, u64 d, u32 gl_sync, u64 status) {
+    NvnSync o = {0};
     (void)c;
     (void)d;
-    (void)gl_sync;
-    memset(GP(s), 0, sizeof(NvnSync)); /* guest memory: every byte the game sees */
-    if (status) gw32(status, 1);
-    LOG_LIMIT(1, "nvn: the game asked for an OpenGL sync, which the runtime has no OpenGL for\n");
-    return 0;
+    if (!g_gl_interop || !g_gl_interop->fenced || !g_gl_interop->fenced(gl_sync)) {
+        memset(GP(s), 0, sizeof(NvnSync)); /* guest memory: every byte the game sees */
+        if (status) gw32(status, 1);
+        LOG_LIMIT(1, "nvn: the game made a sync from an OpenGL fence that is none, or the runtime has no OpenGL\n");
+        return 0;
+    }
+    o.magic = NVN_MAGIC('S', 'Y', 'N', 'C');
+    atomic_store_explicit(&o.fenced, 1, memory_order_relaxed); /* no syncpoint, no display, no time: signaled */
+    memcpy(GP(s), &o, sizeof o);
+    if (status) gw32(status, 0);
+    LOG_LIMIT(1, "nvn: a sync made from an OpenGL fence: signaled at once, the GPU thread runs the GL work in order\n");
+    return 1;
 }
 i32 nvn_SyncCreateGLSync(CPU* c, u64 s, u64 gl_sync) {
+    u64 made = 0;
     (void)c;
     (void)s;
-    (void)gl_sync;
-    LOG_LIMIT(1, "nvn: the game asked for an OpenGL sync, which the runtime has no OpenGL for\n");
-    return 4;
+    if (!g_gl_interop || !g_gl_interop->create || !gl_sync || !g_gl_interop->create(&made)) {
+        LOG_LIMIT(1, "nvn: the game asked for an OpenGL fence, which the runtime has no OpenGL for\n");
+        return 4;
+    }
+    memcpy(GP(gl_sync), &made, sizeof made);
+    LOG_LIMIT(1, "nvn: an OpenGL fence made for an NVN sync\n");
+    return 0;
 }
 int nvn_SyncInitialize(CPU* c, u64 s, u64 d) {
     NvnSync o = {0};

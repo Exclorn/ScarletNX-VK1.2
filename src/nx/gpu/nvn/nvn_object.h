@@ -99,6 +99,17 @@ typedef struct {
 u64 nvn_serial(void);
 /* a memory pool object's storage: its guest address (0 for none), and its GPU address */
 u64 nvn_pool_memory(u64 pool);
+/* OpenGL interop, over the GL layer when the game has one (gpu/gl/gl_sync_calls.c gives it at the loader; a build with no
+   GL layer leaves it NULL and the interop calls fail, as a game's driver does with no OpenGL):
+   texture: the NVN description of GL texture name's storage, 1, or 0 for none;
+   fenced: 1 when gl_sync names a live GL fence;
+   create: a GL fence for the calling thread's work, in *gl_sync, 1, or 0 when none can be made */
+typedef struct {
+    int (*texture)(u32 name, NvnTexture* out);
+    int (*fenced)(u64 gl_sync);
+    int (*create)(u64* gl_sync);
+} NvnGlInterop;
+void nvn_gl_interop(const NvnGlInterop* interop);
 /* the flags of the device the game made last (the runtime has one) */
 u32 nvn_device_flags(void);
 /* the device the game made last (the runtime has one), 0 before: what the builders that don't keep one answer */

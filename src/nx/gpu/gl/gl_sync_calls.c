@@ -7,14 +7,39 @@
 #include "common/gpu/gl/gl_sync.h"
 #include "gpu/gl/gl.hook.h"
 #include "nx/gpu/gl/gl_layer.h"
+#include "nx/gpu/nvn/nvn_object.h"
 #include "nx/runtime/platform/log.h"
 #include "nx/memory/mem.h"
 #include <string.h>
 
 static void say(const char* line) { WARN("gl layer: %s\n", line); }
+
+/* NVN's calls that name GL objects (nvn_object.h's NvnGlInterop): a game that draws its interface through GL and the
+   rest through NVN shares the interface's texture and its fences this way */
+static int interop_texture(u32 name, NvnTexture* out) {
+    gl_object_calls_lock();
+    int ok = gl_nvn_texture(name, out);
+    gl_object_calls_unlock();
+    return ok;
+}
+static int interop_fenced(u64 sync) {
+    gl_object_calls_lock();
+    int ok = snx_gl_is_sync(sync);
+    gl_object_calls_unlock();
+    return ok;
+}
+static int interop_create(u64* sync) {
+    u32 ctx = gl_egl_context(); /* the fence's errors go to a context: the calling thread's, else the first */
+    gl_object_calls_lock();
+    *sync = snx_gl_fence_sync(ctx ? ctx : 1, 0x9117 /* GL_SYNC_GPU_COMMANDS_COMPLETE */, 0);
+    gl_object_calls_unlock();
+    return *sync != 0;
+}
 void gl_sync_calls_init(void) {
     snx_gl_sync_host(&(SnxGlSyncHost){
         .recorded = gl_draw_recorded, .completed = gl_draw_completed, .wait = gl_draw_wait, .say = say});
+    static const NvnGlInterop interop = {.texture = interop_texture, .fenced = interop_fenced, .create = interop_create};
+    nvn_gl_interop(&interop);
 }
 
 #define LOCKED(fallback, ...)                                                                                          \
