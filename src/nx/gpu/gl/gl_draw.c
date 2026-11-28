@@ -205,6 +205,12 @@ static void sampler_entry(u32 index, const SnxGlSamplerState* s) {
     nvn_tsc_encode(&p, words);
     descriptor_put(g_gl_draw.tsc + (u64)index * 32, words);
 }
+/* a diagnostic: the textures drawn into, by the GPU address of their storage, and how many draws wrote each */
+static struct {
+    u64 gva;
+    u32 tex, fb, draws;
+} g_rt[128];
+static u32 g_rt_count;
 /* the texture's TIC entry at its name, its levels from its base level to its last complete one: 0 for none (a
    texture GL samples as incomplete, zeros) */
 static int texture_entry(u32 name) {
@@ -235,6 +241,15 @@ static int texture_entry(u32 name) {
     }
     LOG_LIMIT(30, "gl texture %u samples: %dx%d, NVN format 0x%x, %d levels\n", (unsigned)name, (int)t->width,
               (int)t->height, (unsigned)n.d.format, (int)levels);
+    {   /* a diagnostic: is this texture one that draws wrote? Said when it is sampled and each time its count of writes changed */
+        static u32 said[512];
+        for (u32 k = 0; k < g_rt_count; k++)
+            if (g_rt[k].gva == n.gpu && name < sizeof said / sizeof *said && said[name] != g_rt[k].draws) {
+                said[name] = g_rt[k].draws;
+                LOG_LIMIT(200, "gl texture %u sampled: it is the color target of framebuffer %u, %u draws wrote it so far\n",
+                          (unsigned)name, (unsigned)g_rt[k].fb, (unsigned)g_rt[k].draws);
+            }
+    }
     {   /* a diagnostic: does the CPU's copy of the texels hold anything? Said when that is first known and when it changes */
         static u8 seen[256];
         const u8* kept = t->texels ? snx_gl_client_bytes(t->texels) : NULL;
@@ -458,6 +473,14 @@ static int targets(u32 ctx, DsTargets* t) {
         if (which < GL_COLOR_ATTACHMENT0_ || which >= GL_COLOR_ATTACHMENT0_ + SNX_GL_COLORS) continue;
         if (!gl_attachment_surface(&f->at[which - GL_COLOR_ATTACHMENT0_], &t->color[i], (int*)&depth, &msaa)) continue;
         t->count = i + 1;
+        if (f->at[which - GL_COLOR_ATTACHMENT0_].kind == SNX_GL_ATTACH_TEXTURE) { /* a diagnostic: a texture drawn into */
+            u32 k = 0;
+            while (k < g_rt_count && g_rt[k].gva != t->color[i].gva) k++;
+            if (k == g_rt_count && k < sizeof g_rt / sizeof *g_rt) g_rt_count++;
+            if (k < g_rt_count)
+                g_rt[k].gva = t->color[i].gva, g_rt[k].tex = f->at[which - GL_COLOR_ATTACHMENT0_].name, g_rt[k].fb = fb,
+                g_rt[k].draws++;
+        }
     }
     {
         const SnxGlAttachment* d =
