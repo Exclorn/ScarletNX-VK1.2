@@ -1342,14 +1342,16 @@ static void uniform_write(uint32_t ctx, uint32_t name, int32_t location, int32_t
     }
     rows = n / columns;
     {   /* a diagnostic: each write to a fragment stage's uniform, to see which program it reaches and with what */
-        static unsigned said;
-        if (u->offset[1] >= 0 && said < 150) {
-            float v[4] = {0};
-            said++;
+        static unsigned said_zero, said_value, total;
+        float v[4] = {0};
+        if (u->offset[1] >= 0 && u->sampler < 0) {
             memcpy(v, bytes, (size_t)n * 4 < sizeof v ? (size_t)n * 4 : sizeof v);
-            say("uniform write: program %u%s location %d count %d type 0x%x offsets %d/%d/%d default sizes %u/%u/%u,"
+            total++;
+        }
+        if (u->offset[1] >= 0 && ((v[0] != 0 || v[1] != 0 || v[2] != 0 || v[3] != 0) ? said_value++ < 150 : said_zero++ < 12)) {
+            say("uniform write (%u so far): program %u%s location %d count %d type 0x%x offsets %d/%d/%d default sizes %u/%u/%u,"
                 " first values %g %g %g %g",
-                (unsigned)name, p->hidden ? " (hidden)" : "", (int)location, (int)count, (unsigned)u->type,
+                total, (unsigned)name, p->hidden ? " (hidden)" : "", (int)location, (int)count, (unsigned)u->type,
                 (int)u->offset[0], (int)u->offset[1], (int)u->offset[2], (unsigned)p->default_size[0],
                 (unsigned)p->default_size[1], (unsigned)p->default_size[2], (double)v[0], (double)v[1], (double)v[2],
                 (double)v[3]);
