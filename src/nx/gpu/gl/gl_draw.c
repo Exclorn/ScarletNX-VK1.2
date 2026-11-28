@@ -737,6 +737,33 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
                       (int)f->viewport[2], (int)f->viewport[3], f->scissor_test ? "on" : "off");
         }
     }
+    {   /* a diagnostic: each distinct state a draw has, said once, so the draws that show can be told from those that do not */
+        static u64 seen[256];
+        static u32 nseen;
+        u64 key = 1469598103934665603ull;
+        const u64 parts[] = {program, r->blend.en[0], r->blend.sc[0], r->blend.dc[0], r->blend.sa[0], r->blend.da[0],
+                             r->blend.mask[0], r->dyn.depth_test, r->dyn.depth_write, r->dyn.depth_cmp,
+                             r->dyn.stencil_test, r->dyn.face[0].cmp, r->dyn.face[0].ref, r->dyn.face[0].cmask,
+                             r->dyn.face[0].wmask, r->dyn.face[0].fail, r->dyn.face[0].zfail, r->dyn.face[0].pass,
+                             r->dyn.cull, r->tgt.depth.gva != 0, r->tgt.count, (u64)(snx_gl_framebuffers(ctx)->draw != 0)};
+        int found = 0;
+        for (u32 i = 0; i < sizeof parts / sizeof *parts; i++) key = (key ^ parts[i]) * 1099511628211ull;
+        for (u32 i = 0; i < nseen; i++) found |= seen[i] == key;
+        if (!found && nseen < sizeof seen / sizeof *seen) {
+            seen[nseen++] = key;
+            LOG_LIMIT(200, "gl draw state: program %u fb %u targets %u depth %s | blend %u src %u/%u dst %u/%u mask 0x%x |"
+                           " depth test %u write %u cmp %u | stencil %u cmp %u ref %u cmask 0x%x wmask 0x%x ops %u/%u/%u |"
+                           " cull %u\n",
+                      (unsigned)program, (unsigned)snx_gl_framebuffers(ctx)->draw, (unsigned)r->tgt.count,
+                      r->tgt.depth.gva ? "yes" : "no", (unsigned)r->blend.en[0], (unsigned)r->blend.sc[0],
+                      (unsigned)r->blend.sa[0], (unsigned)r->blend.dc[0], (unsigned)r->blend.da[0],
+                      (unsigned)r->blend.mask[0], (unsigned)r->dyn.depth_test, (unsigned)r->dyn.depth_write,
+                      (unsigned)r->dyn.depth_cmp, (unsigned)r->dyn.stencil_test, (unsigned)r->dyn.face[0].cmp,
+                      (unsigned)r->dyn.face[0].ref, (unsigned)r->dyn.face[0].cmask, (unsigned)r->dyn.face[0].wmask,
+                      (unsigned)r->dyn.face[0].fail, (unsigned)r->dyn.face[0].zfail, (unsigned)r->dyn.face[0].pass,
+                      (unsigned)r->dyn.cull);
+        }
+    }
     r->dyn.depth_word = call->base_instance;
     constants(ctx, p, si, r, serial);
     r->call.state_flags |= DS_DRAW_POINT_SIZE;
