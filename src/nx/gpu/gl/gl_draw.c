@@ -784,6 +784,31 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
                       (unsigned)p->default_size[1], (double)fs[0], (double)fs[1], (double)fs[2], (double)fs[3],
                       (unsigned)r->bind.cb_size[0][1], (unsigned)r->bind.cb_size[0][2], (unsigned)r->bind.cb_size[0][3],
                       (unsigned)r->bind.cb_size[4][1], (unsigned)r->bind.cb_size[4][2], (unsigned)r->bind.cb_size[4][3]);
+            {   /* and each attribute the program reads: its format, and the first vertex's raw bytes */
+                const SnxGlVertexArray* va = snx_gl_vertex_array(ctx);
+                for (u32 g = 0; g < SNX_GL_VERTEX_ATTRIBS; g++) {
+                    const SnxGlAttrib* at = &va->attribs[g];
+                    const SnxGlVertexBinding* vb;
+                    const u8* base;
+                    u8 raw[16] = {0};
+                    u64 where;
+                    if (!at->enabled) continue;
+                    vb = &va->bindings[at->binding];
+                    base = snx_gl_buffer_bytes(vb->buffer);
+                    where = (u64)vb->offset + at->relative;
+                    if (base && snx_gl_buffer(vb->buffer) && where + sizeof raw <= snx_gl_buffer(vb->buffer)->size)
+                        memcpy(raw, base + where, sizeof raw);
+                    LOG_LIMIT(400, "gl draw program %u attribute %u: type 0x%x size %d normalized %u integer %u binding %u"
+                                   " stride %d offset %llu buffer %u of %llu bytes, first bytes"
+                                   " %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n",
+                              (unsigned)program, (unsigned)g, (unsigned)at->type, (int)at->size, (unsigned)at->normalized,
+                              (unsigned)at->integer, (unsigned)at->binding, (int)vb->stride, (unsigned long long)where,
+                              (unsigned)vb->buffer,
+                              (unsigned long long)(snx_gl_buffer(vb->buffer) ? snx_gl_buffer(vb->buffer)->size : 0),
+                              raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7], raw[8], raw[9], raw[10],
+                              raw[11], raw[12], raw[13], raw[14], raw[15]);
+                }
+            }
         }
     }
     r->call.state_flags |= DS_DRAW_POINT_SIZE;
