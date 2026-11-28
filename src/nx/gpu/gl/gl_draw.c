@@ -848,6 +848,19 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
                               raw[11], raw[12], raw[13], raw[14], raw[15]);
                 }
             }
+            for (u32 st = 0; st < 2; st++) { /* and each stage's GLSL, in lines of 300 bytes with | for a new line */
+                const SnxGlShader* sh = p->shaders[st] ? snx_gl_shader(p->shaders[st]) : NULL;
+                const char* src = sh && sh->source.size ? (const char*)snx_gl_bytes(sh->source) : NULL;
+                size_t len = src ? strlen(src) : 0;
+                for (size_t at = 0; at < len && at < 2400; at += 300) {
+                    char part[301];
+                    size_t n = len - at < 300 ? len - at : 300;
+                    for (size_t i = 0; i < n; i++) part[i] = src[at + i] == '\n' ? '|' : src[at + i];
+                    part[n] = 0;
+                    LOG_LIMIT(700, "gl shader of program %u stage %u at %zu of %zu: %s\n", (unsigned)program, (unsigned)st, at,
+                              len, part);
+                }
+            }
         }
     }
     r->call.state_flags |= DS_DRAW_POINT_SIZE;
