@@ -1259,6 +1259,35 @@ setting Vulkan validation layer
     help 1 = the Vulkan validation layer (VK_LAYER_KHRONOS_validation, the Vulkan SDK's) checks every Vulkan call and
     help logs what it finds. It slows the game down a lot, and a missing layer is only a warning. 2 = also GPU-assisted
     help validation, which finds out-of-bounds and unwritten descriptor accesses in shaders, and is slower again
+setting GL debug only program
+    key gl_debug_only_program
+    int 0 1000000
+    default 0
+    help A debug switch for a game that draws through its own OpenGL driver: only the draws of the GL program with this
+    help number are made, and the others are skipped. 0 = all draws
+setting GL debug skip program
+    key gl_debug_skip_program
+    int 0 1000000
+    default 0
+    help A debug switch for a game that draws through its own OpenGL driver: the draws of the GL program with this
+    help number are skipped. 0 = none
+setting GL debug only framebuffer
+    key gl_debug_only_framebuffer
+    int 0 1000000
+    default 0
+    help A debug switch for a game that draws through its own OpenGL driver: only the draws and clears into the GL
+    help framebuffer with this number are made. 0 = all
+setting GL debug coverage
+    key gl_debug_coverage
+    int 0 1
+    default 0
+    help A debug switch for a game that draws through its own OpenGL driver: 1 = each draw writes opaque magenta where
+    help it covers a pixel, with no blend, so that a picture shows where the draws land whatever their textures hold
+setting GL debug no blend
+    key gl_debug_no_blend
+    int 0 1
+    default 0
+    help A debug switch for a game that draws through its own OpenGL driver: 1 = blending is off in each draw
 setting Vulkan pipeline cache
     key vk_pipeline_cache
     int 0 1

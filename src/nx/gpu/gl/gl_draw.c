@@ -719,6 +719,11 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
     if (memory_ready()) return 0;
     p = draw_program(ctx, &program, si);
     if (!p) return 0;
+    if ((g_settings.gl_debug_only_program && program != (u32)g_settings.gl_debug_only_program) ||
+        (g_settings.gl_debug_skip_program && program == (u32)g_settings.gl_debug_skip_program) ||
+        (g_settings.gl_debug_only_framebuffer &&
+         snx_gl_framebuffers(ctx)->draw != (u32)g_settings.gl_debug_only_framebuffer))
+        return 0; /* a debug switch left this draw out */
     r = calloc(1, sizeof *r);
     if (!r) fatal("gl layer: out of memory for a draw");
     r->ctx = ctx, r->program = program, r->generation = p->generation, r->call = *call;
@@ -744,6 +749,17 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
         r->index.restart_index = r->index.format == 0 ? 0xff : r->index.format == 1 ? 0xffff : 0xffffffffu;
     }
     fixed_state(ctx, r);
+    for (u32 i = 0; i < DS_TARGETS_MAX; i++) {
+        if (g_settings.gl_debug_no_blend) r->blend.en[i] = 0;
+        if (g_settings.gl_debug_coverage) { /* each covered pixel the constant color, whatever the program computes */
+            r->blend.en[i] = 1, r->blend.cop[i] = r->blend.aop[i] = DS_BLEND_ADD;
+            r->blend.sc[i] = DS_FACTOR_CONSTANT_COLOR, r->blend.sa[i] = DS_FACTOR_CONSTANT_ALPHA;
+            r->blend.dc[i] = r->blend.da[i] = DS_FACTOR_ZERO;
+            r->blend.mask[i] = 0xf;
+        }
+    }
+    if (g_settings.gl_debug_coverage) r->dyn.blend_const[0] = 1.0f, r->dyn.blend_const[1] = 0.0f,
+                                      r->dyn.blend_const[2] = 1.0f, r->dyn.blend_const[3] = 1.0f;
     {
         const SnxGlFixed* f = snx_gl_fixed(ctx); /* the state of some draws, for a picture that is drawn but wrong */
         u32 fb = snx_gl_framebuffers(ctx)->draw;
@@ -856,6 +872,9 @@ int gl_draw_clear(u32 ctx, u32 buffers) {
     LOG_LIMIT(30, "gl clear: ctx %u framebuffer %u window surface %u buffers 0x%x\n", (unsigned)ctx,
               (unsigned)snx_gl_framebuffers(ctx)->draw, (unsigned)gl_egl_draw(), (unsigned)buffers);
     if (memory_ready()) return 0;
+    if (g_settings.gl_debug_only_framebuffer &&
+        snx_gl_framebuffers(ctx)->draw != (u32)g_settings.gl_debug_only_framebuffer)
+        return 0; /* a debug switch left this clear out */
     r = calloc(1, sizeof *r);
     if (!r) fatal("gl layer: out of memory for a clear");
     r->ctx = ctx, r->clear = 1;
