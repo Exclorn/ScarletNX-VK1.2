@@ -317,19 +317,31 @@ u32 gl_create_shader_programv(CPU* c, u32 type, i32 count, u64 strings) {
 
 /* ---- uniforms ---- */
 
+/* a diagnostic: the first calls of each uniform function with 4 floats, by value or by pointer, and what they carry */
+static void trace_uniform(const char* name, i32 location, const void* v, char kind) {
+    float f[4] = {0};
+    if (kind != 'f' || !v) return;
+    memcpy(f, v, sizeof f);
+    LOG_LIMIT(80, "gl call: %s location %d values %g %g %g %g\n", name, (int)location, (double)f[0], (double)f[1],
+              (double)f[2], (double)f[3]);
+}
 #define UNIFORMS(n, k, t, kind, ...)                                                                                   \
     void gl_uniform##n##k(CPU* c, i32 location, __VA_ARGS__) {                                                         \
         const t v[n] = {UNIFORM_ARGS##n};                                                                              \
+        if (n == 4) trace_uniform("glUniform4f", location, v, kind);                                                   \
         LOCKED(NONE, snx_gl_uniform(ctx, location, 1, v, n, kind, 0));                                                 \
     }                                                                                                                  \
     void gl_uniform##n##k##v(CPU* c, i32 location, i32 count, u64 value) {                                             \
+        if (n == 4) trace_uniform("glUniform4fv", location, host(value), kind);                                        \
         LOCKED(NONE, snx_gl_uniform(ctx, location, count, host(value), n, kind, 0));                                   \
     }                                                                                                                  \
     void gl_program_uniform##n##k(CPU* c, u32 program, i32 location, __VA_ARGS__) {                                    \
         const t v[n] = {UNIFORM_ARGS##n};                                                                              \
+        if (n == 4) trace_uniform("glProgramUniform4f", location, v, kind);                                            \
         LOCKED(NONE, snx_gl_program_uniform(ctx, program, location, 1, v, n, kind, 0));                                \
     }                                                                                                                  \
     void gl_program_uniform##n##k##v(CPU* c, u32 program, i32 location, i32 count, u64 value) {                        \
+        if (n == 4) trace_uniform("glProgramUniform4fv", location, host(value), kind);                                 \
         LOCKED(NONE, snx_gl_program_uniform(ctx, program, location, count, host(value), n, kind, 0));                  \
     }
 #define UNIFORM_ARGS1 v0
