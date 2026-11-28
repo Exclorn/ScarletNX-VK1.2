@@ -1341,6 +1341,20 @@ static void uniform_write(uint32_t ctx, uint32_t name, int32_t location, int32_t
         return;
     }
     rows = n / columns;
+    {   /* a diagnostic: each write to a fragment stage's uniform, to see which program it reaches and with what */
+        static unsigned said;
+        if (u->offset[1] >= 0 && said < 150) {
+            float v[4] = {0};
+            said++;
+            memcpy(v, bytes, (size_t)n * 4 < sizeof v ? (size_t)n * 4 : sizeof v);
+            say("uniform write: program %u%s location %d count %d type 0x%x offsets %d/%d/%d default sizes %u/%u/%u,"
+                " first values %g %g %g %g",
+                (unsigned)name, p->hidden ? " (hidden)" : "", (int)location, (int)count, (unsigned)u->type,
+                (int)u->offset[0], (int)u->offset[1], (int)u->offset[2], (unsigned)p->default_size[0],
+                (unsigned)p->default_size[1], (unsigned)p->default_size[2], (double)v[0], (double)v[1], (double)v[2],
+                (double)v[3]);
+        }
+    }
     for (int s = 0; s < 3; ++s) {
         uint8_t* block = snx_gl_program_default(p, s);
         if (u->offset[s] < 0 || !p->default_size[s]) continue;
@@ -1475,6 +1489,15 @@ uint32_t snx_gl_draw_program(uint32_t ctx, int compute) {
         const SnxGlProgram* from = stage ? f : v;
         uint8_t* to = snx_gl_program_default(h, stage);
         const uint8_t* src = snx_gl_program_default(from, stage);
+        {   /* a diagnostic: a stage block that the pipeline cannot copy because the sizes differ */
+            static unsigned said;
+            if (h->default_size[stage] != from->default_size[stage] && said < 40) {
+                said++;
+                say("program pipeline: stage %d default block is %u bytes in the hidden program %u but %u in program %u",
+                    stage, (unsigned)h->default_size[stage], (unsigned)hidden, (unsigned)from->default_size[stage],
+                    (unsigned)pp->stages[stage]);
+            }
+        }
         if (h->default_size[stage] == from->default_size[stage] && h->default_size[stage] &&
             memcmp(to, src, h->default_size[stage])) {
             memcpy(to, src, h->default_size[stage]);
