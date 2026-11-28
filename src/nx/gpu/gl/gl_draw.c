@@ -239,10 +239,10 @@ static int texture_entry(u32 name) {
         static u8 seen[256];
         const u8* kept = t->texels ? snx_gl_client_bytes(t->texels) : NULL;
         if (name < sizeof seen && seen[name] != 2) {
-            u64 scan = t->texels_size < 262144 ? t->texels_size : 262144, nonzero = 0;
+            u64 scan = t->texels_size < 4194304 ? t->texels_size : 4194304, nonzero = 0;
             for (u64 i = 0; kept && i < scan; i++) nonzero += kept[i] != 0;
             if (!seen[name] || nonzero) {
-                LOG_LIMIT(60, "gl texture %u texels: %llu of the first %llu bytes are not zero (%s), defined levels 0x%x\n",
+                LOG_LIMIT(300, "gl texture %u texels: %llu of the first %llu bytes are not zero (%s), defined levels 0x%x\n",
                           (unsigned)name, (unsigned long long)nonzero, (unsigned long long)scan,
                           kept ? "kept" : "not kept", (unsigned)t->defined);
                 seen[name] = nonzero ? 2 : 1;

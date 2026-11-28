@@ -242,7 +242,7 @@ typedef struct {
 static void upload_on_gpu(void* arg) {
     TexelUpload* w = arg;
     if (!nvn_copy_texels_in(&w->t, &w->view, &w->region, w->bytes, w->row, w->image))
-        LOG_LIMIT(4, "gl layer: an upload into a texture of NVN format %#x the runtime can't lay out\n", w->t.d.format);
+        LOG_LIMIT(40, "gl layer: an upload into a texture of NVN format %#x the runtime can't lay out\n", w->t.d.format);
     gl_draw_done(w->serial);
     free(w);
 }
@@ -255,7 +255,11 @@ static void upload(uint32_t ctx, uint32_t name, const SnxGlUpload* u) {
     u64 per = u->row, size;
     TexelUpload* w;
     (void)ctx;
-    if (!gl_nvn_texture(name, &n) || !n.gpu) return;
+    if (!gl_nvn_texture(name, &n) || !n.gpu) {
+        LOG_LIMIT(60, "gl upload: texture %u level %d %dx%d DROPPED: it has no storage the GPU can write\n",
+                  (unsigned)name, (int)u->level, (int)u->w, (int)u->h);
+        return;
+    }
     nvn_format(snx_gl_texture(name)->format, &swizzle, &expand);
     if (expand) per = u->row / 3 * 4;
     size = per * u->rows * (u64)u->d;
@@ -279,6 +283,13 @@ static void upload(uint32_t ctx, uint32_t name, const SnxGlUpload* u) {
             else
                 memcpy(to, from, (size_t)u->row);
         }
+    {   /* a diagnostic: what the game sent, and where it went */
+        u64 nonzero = 0;
+        for (u64 i = 0; i < size; i++) nonzero += w->bytes[i] != 0;
+        LOG_LIMIT(150, "gl upload: texture %u level %d box %d,%d %dx%d, %llu bytes sent, %llu not zero, NVN format %#x\n",
+                  (unsigned)name, (int)u->level, (int)u->x, (int)u->y, (int)u->w, (int)u->h, (unsigned long long)size,
+                  (unsigned long long)nonzero, (unsigned)n.d.format);
+    }
     w->serial = gl_draw_issue();
     gpu_call(upload_on_gpu, w, NULL, 0);
 }
