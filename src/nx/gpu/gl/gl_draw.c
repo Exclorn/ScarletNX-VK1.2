@@ -766,6 +766,26 @@ int gl_draw(u32 ctx, const DrawCall* call, u32 elements_type, u64 indices) {
     }
     r->dyn.depth_word = call->base_instance;
     constants(ctx, p, si, r, serial);
+    {   /* a diagnostic: what the first draw of each program gets for uniforms, to tell a collapsed sprite from a good one */
+        static u32 done[128];
+        static u32 ndone;
+        int found = 0;
+        for (u32 i = 0; i < ndone; i++) found |= done[i] == program;
+        if (!found && ndone < sizeof done / sizeof *done) {
+            float vs[8] = {0}, fs[8] = {0};
+            done[ndone++] = program;
+            if (p->default_size[0]) memcpy(vs, snx_gl_program_default(p, 0), p->default_size[0] < sizeof vs ? p->default_size[0] : sizeof vs);
+            if (p->default_size[1]) memcpy(fs, snx_gl_program_default(p, 1), p->default_size[1] < sizeof fs ? p->default_size[1] : sizeof fs);
+            LOG_LIMIT(128, "gl draw program %u: topology %u indexed %u count %u instances %u | default uniforms vs %u bytes"
+                           " [%g %g %g %g %g %g %g %g] fs %u bytes [%g %g %g %g] | uniform blocks vs %u/%u/%u fs %u/%u/%u bytes\n",
+                      (unsigned)program, (unsigned)call->topology, (unsigned)call->indexed, (unsigned)call->count,
+                      (unsigned)call->instances, (unsigned)p->default_size[0], (double)vs[0], (double)vs[1], (double)vs[2],
+                      (double)vs[3], (double)vs[4], (double)vs[5], (double)vs[6], (double)vs[7],
+                      (unsigned)p->default_size[1], (double)fs[0], (double)fs[1], (double)fs[2], (double)fs[3],
+                      (unsigned)r->bind.cb_size[0][1], (unsigned)r->bind.cb_size[0][2], (unsigned)r->bind.cb_size[0][3],
+                      (unsigned)r->bind.cb_size[4][1], (unsigned)r->bind.cb_size[4][2], (unsigned)r->bind.cb_size[4][3]);
+        }
+    }
     r->call.state_flags |= DS_DRAW_POINT_SIZE;
     r->call.point_size = snx_gl_fixed(ctx)->point_size;
     r->ring_end = g_gl_draw.head;
