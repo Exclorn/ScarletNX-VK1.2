@@ -748,7 +748,7 @@ int main(void) {
             assert(n.d.width == 2 && n.d.height == 2 && n.d.levels == 2 && n.gpu == gl_gpu_address(x->texels));
             assert(n.gpu && gl_gpu_address(x->texels + 16) == n.gpu + 16 && !gl_gpu_address(0x10));
             nvn_tex_storage(&n.d, &st);
-            assert(x->texels_size == st.size && !(x->texels % st.align));
+            assert(x->texels_size == ((st.size + 4095) & ~(uint64_t)4095) && !(x->texels % 4096) && !(x->texels % st.align));
             assert(g_upload.count == 1 && g_upload.t.gpu == n.gpu && g_upload.v.base_level == 0);
             assert(g_upload.r.width == 2 && g_upload.r.height == 2 && g_upload.r.depth == 1 && g_upload.row == 8);
             assert(!memcmp(g_upload.bytes, GP(pixels), 16));
@@ -809,7 +809,8 @@ int main(void) {
             NvnTexStorage st;
             assert(gl_nvn_renderbuffer(gr32(names + 12), &n) && n.d.format == NVN_FORMAT_DEPTH24_STENCIL8);
             nvn_tex_storage(&n.d, &st);
-            assert(rb->storage && rb->storage_size == st.size && !(rb->storage % st.align));
+            assert(rb->storage && rb->storage_size == ((st.size + 4095) & ~(uint64_t)4095) && !(rb->storage % 4096) &&
+                   !(rb->storage % st.align));
             assert(g_drawn.nclear == 1 && g_drawn.clear[0].aspects == 3 && !g_drawn.clear[0].color_mask);
             assert(g_drawn.ds.tgt.depth.gva == gl_gpu_address(rb->storage) && n.gpu == g_drawn.ds.tgt.depth.gva);
         }
